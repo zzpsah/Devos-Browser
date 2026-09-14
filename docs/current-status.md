@@ -43,21 +43,22 @@ Core rule:
 - runtime-side bridge session with hello/helloAck negotiation and ping/pong
 - explicit Chrome debugger attach/detach for runtime-selected tabs
 - bounded observation of an explicitly attached tab through CDP `Runtime.evaluate`
+- correlated runtime command broker with bounded command kinds, per-command timeout, correlation cleanup, disconnect failure propagation, and no blind replay
 - structured action execution remains fail-closed until the governed executor slice is implemented
 - CI restore/build/test workflow
 
 ## Latest verified CI milestone
 
-Commit: `47214e55d1cb06047e7ab5da86498893ee162de0`
+Commit: `6b84d14a995618f3575dc10b45c0b5783d5dad70`
 
-Push workflow run: `34843128339`
+Pull-request workflow run: `34843456751`
 
 Result:
 
 - restore: PASS
 - build: PASS
 - tests: PASS
-- test count: 64 passed / 0 failed
+- test count: 70 passed / 0 failed
 - build warnings: 0
 - build errors: 0
 
@@ -74,13 +75,14 @@ Working in code/CI:
 3. Extension sends a versioned hello payload.
 4. Runtime validates protocol, transport, endpoint and requested capabilities.
 5. Runtime returns a bounded capability grant.
-6. Runtime may request attach/detach/observe messages in the bridge protocol.
+6. Runtime command broker creates correlated attach/detach/observe/action/ping commands with timeout and disconnect handling.
 7. Extension can attach only the requested tab and perform a bounded observation.
-8. Arbitrary action execution is rejected until a governed command executor is wired through the runtime.
+8. Correlated extension event/error responses can complete the matching broker command without blind retry.
+9. Arbitrary action execution is rejected until a governed command executor is wired through the runtime.
 
 Still missing before Chrome acceptance can be claimed:
 
-- runtime-to-extension command broker/correlation path
+- WebSocket command broker binding/pump from runtime callers to the active extension connection
 - normalized DOM/accessibility element refs (`d1`, `d2`, ...)
 - governed navigation/click/type/read/wait execution
 - result/readback mapping into `BrowserActionResult`
@@ -91,6 +93,6 @@ Still missing before Chrome acceptance can be claimed:
 
 ## Next slice
 
-Implement the bidirectional runtime-to-extension command broker with correlation/timeouts and tests, then wire a minimal governed read-only browser path (`attach -> observe -> normalized observation`) before adding controlled mutation actions.
+Bind the command broker to the active WebSocket connection and implement the minimal governed read-only browser path (`attach -> observe -> normalized observation`). After that, add controlled navigation/click/type/read/wait execution behind existing governance.
 
 Keep the PR draft. Do not publish binaries and do not merge `main` until explicit user approval and separate real-machine validation are complete.
