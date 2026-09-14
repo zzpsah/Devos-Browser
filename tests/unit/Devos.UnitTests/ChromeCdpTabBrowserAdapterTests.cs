@@ -15,8 +15,9 @@ public sealed class ChromeCdpTabBrowserAdapterTests
         Assert.Contains("browser.observe", adapter.Capabilities);
         Assert.Contains("browser.navigate", adapter.Capabilities);
         Assert.Contains("browser.wait.selector", adapter.Capabilities);
-        Assert.DoesNotContain("browser.click", adapter.Capabilities);
-        Assert.DoesNotContain("browser.type", adapter.Capabilities);
+        Assert.Contains("browser.click", adapter.Capabilities);
+        Assert.Contains("browser.type", adapter.Capabilities);
+        Assert.Contains("browser.select", adapter.Capabilities);
         Assert.DoesNotContain("browser.form.submit", adapter.Capabilities);
     }
 
@@ -24,7 +25,8 @@ public sealed class ChromeCdpTabBrowserAdapterTests
     public async Task NavigateSendsBoundedExecuteActionPayload()
     {
         var commands = new FakeCommandClient();
-        var adapter = NewAdapter(commands);
+        var observations = new FakeObservationClient();
+        var adapter = NewAdapter(commands, observations);
 
         var result = await adapter.ExecuteAsync(new BrowserAction(
             BrowserActionKind.Navigate,
@@ -35,6 +37,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
         Assert.Equal(VerificationState.NotVerified, result.Verification);
         Assert.Equal("https://school.example/dashboard", result.UrlBefore);
         Assert.Equal("https://school.example/students", result.UrlAfter);
+        Assert.Equal(1, observations.CallCount);
         Assert.Single(commands.Calls);
         Assert.Equal(ChromeCdpBridgeMessageKinds.ExecuteAction, commands.Calls[0].Kind);
         Assert.Equal("42", commands.Calls[0].TabId);
@@ -45,10 +48,11 @@ public sealed class ChromeCdpTabBrowserAdapterTests
     }
 
     [Fact]
-    public async Task WaitMapsSuccessfulActionResultWithoutMutationCapability()
+    public async Task WaitMapsSuccessfulActionResult()
     {
         var commands = new FakeCommandClient();
-        var adapter = NewAdapter(commands);
+        var observations = new FakeObservationClient();
+        var adapter = NewAdapter(commands, observations);
 
         var result = await adapter.ExecuteAsync(new BrowserAction(
             BrowserActionKind.Wait,
@@ -59,6 +63,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
         Assert.Equal("https://school.example/dashboard", result.UrlBefore);
         Assert.Equal("https://school.example/dashboard", result.UrlAfter);
         Assert.Equal(VerificationState.NotVerified, result.Verification);
+        Assert.Equal(1, observations.CallCount);
         Assert.Single(commands.Calls);
 
         var action = commands.Calls[0].Payload!.Value.GetProperty("action");
@@ -66,24 +71,159 @@ public sealed class ChromeCdpTabBrowserAdapterTests
         Assert.Equal("#ready", action.GetProperty("target").GetString());
     }
 
-    [Theory]
-    [InlineData(BrowserActionKind.Click)]
-    [InlineData(BrowserActionKind.Type)]
-    [InlineData(BrowserActionKind.Select)]
-    [InlineData(BrowserActionKind.Submit)]
-    public async Task MutationActionsRemainFailClosed(BrowserActionKind kind)
+    [Fact]
+    public async Task ClickWithFreshSnapshotSendsSnapshotToken()
     {
         var commands = new FakeCommandClient();
-        var observations = new FakeObservationClient();
-        var adapter = NewAdapter(commands, observations);
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
 
-        var result = await adapter.ExecuteAsync(new BrowserAction(kind, Target: "d1", Value: "value"));
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            RequiredCapability: "browser.click",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "button Open students"));
+
+        Assert.True(result.Success);
+        Assert.Single(commands.Calls);
+        var action = commands.Calls[0].Payload!.Value.GetProperty("action");
+        Assert.Equal("click", action.GetProperty("kind").GetString());
+        Assert.Equal("d1", action.GetProperty("target").GetString());
+        Assert.Equal("snapshot-1", action.GetProperty("snapshotToken").GetString());
+    }
+
+    [Fact]
+    public async Task TypeWithFreshSnapshotSendsValue()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Type,
+            Target: "d2",
+            Value: "Prashant",
+            RequiredCapability: "browser.type",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "textbox Student name"));
+
+        Assert.True(result.Success);
+        var action = Assert.Single(commands.Calls).Payload!.Value.GetProperty("action");
+        Assert.Equal("type", action.GetProperty("kind").GetString());
+        Assert.Equal("Prashant", action.GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task SelectWithFreshSnapshotSendsValue()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Select,
+            Target: "d3",
+            Value: "11",
+            RequiredCapability: "browser.select",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "combobox Class"));
+
+        Assert.True(result.Success);
+        var action = Assert.Single(commands.Calls).Payload!.Value.GetProperty("action");
+        Assert.Equal("select", action.GetProperty("kind").GetString());
+        Assert.Equal("11", action.GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task ElementActionWithoutCachedMatchingSnapshotFailsClosed()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            SnapshotToken: "snapshot-1",
+            SemanticHint: "button Open students"));
 
         Assert.False(result.Success);
-        Assert.Equal(VerificationState.Fail, result.Verification);
+        Assert.Contains("stale", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public async Task StaleSnapshotTokenFailsClosedAfterFreshObservation()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        _ = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            SnapshotToken: "older-snapshot",
+            SemanticHint: "button Open students"));
+
+        Assert.False(result.Success);
+        Assert.Contains("stale", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public async Task SuccessfulElementMutationInvalidatesCachedSnapshot()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+        var action = new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "button Open students");
+
+        var first = await adapter.ExecuteAsync(action);
+        var second = await adapter.ExecuteAsync(action);
+
+        Assert.True(first.Success);
+        Assert.False(second.Success);
+        Assert.Contains("stale", second.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(commands.Calls);
+    }
+
+    [Fact]
+    public async Task SubmitRemainsFailClosed()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Submit,
+            Target: "d1",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "button Submit"));
+
+        Assert.False(result.Success);
         Assert.Contains("not enabled", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(commands.Calls);
-        Assert.Equal(0, observations.CallCount);
+    }
+
+    [Fact]
+    public async Task MissingSemanticContextRejectsElementAction()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            SnapshotToken: observation.SnapshotToken));
+
+        Assert.False(result.Success);
+        Assert.Contains("semantic", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(commands.Calls);
     }
 
     [Fact]
@@ -137,7 +277,8 @@ public sealed class ChromeCdpTabBrowserAdapterTests
     public async Task UnsafeNavigateSchemeFailsBeforeExecuteCommand()
     {
         var commands = new FakeCommandClient();
-        var adapter = NewAdapter(commands);
+        var observations = new FakeObservationClient();
+        var adapter = NewAdapter(commands, observations);
 
         var result = await adapter.ExecuteAsync(new BrowserAction(
             BrowserActionKind.Navigate,
@@ -146,6 +287,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
         Assert.False(result.Success);
         Assert.Contains("HTTP or HTTPS", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(commands.Calls);
+        Assert.Equal(0, observations.CallCount);
     }
 
     private static ChromeCdpTabBrowserAdapter NewAdapter(
@@ -180,11 +322,17 @@ public sealed class ChromeCdpTabBrowserAdapterTests
                 Title: "Dashboard",
                 TabId: tabId,
                 VisibleText: "Ready",
-                Elements: Array.Empty<BrowserElement>(),
+                Elements: new[]
+                {
+                    new BrowserElement("d1", "button", "Open students", "button", null, true),
+                    new BrowserElement("d2", "textbox", "Student name", "text", null, true),
+                    new BrowserElement("d3", "combobox", "Class", "select", null, true)
+                },
                 Forms: Array.Empty<BrowserForm>(),
                 Tables: Array.Empty<BrowserTable>(),
                 Frames: Array.Empty<BrowserFrame>(),
-                NetworkState: "complete");
+                NetworkState: "complete",
+                SnapshotToken: "snapshot-1");
     }
 
     private sealed class FakeCommandClient : IChromeCdpBridgeCommandClient
