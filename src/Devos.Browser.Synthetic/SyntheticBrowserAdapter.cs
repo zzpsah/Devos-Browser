@@ -384,7 +384,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
             return string.IsNullOrWhiteSpace(uri.PathAndQuery) ? "/login" : uri.PathAndQuery;
         }
 
-        return value.StartsWith('/', StringComparison.Ordinal) ? value : "/" + value;
+        return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
     }
 
     private static string CapabilityFor(BrowserActionKind kind)
