@@ -14,7 +14,10 @@ public static class ChromeCdpBridgeWebSocketEndpoint
         PropertyNameCaseInsensitive = true
     };
 
-    public static async Task HandleAsync(HttpContext context, BrowserBridgeRuntimeState state)
+    public static async Task HandleAsync(
+        HttpContext context,
+        BrowserBridgeRuntimeState state,
+        ChromeCdpBridgeCommandConnection commandConnection)
     {
         if (context.Connection.RemoteIpAddress is not { } remoteAddress || !IPAddress.IsLoopback(remoteAddress))
         {
@@ -31,8 +34,14 @@ public static class ChromeCdpBridgeWebSocketEndpoint
         }
 
         using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        using var sendGate = new SemaphoreSlim(1, 1);
         var session = new ChromeCdpBridgeSession();
-        state.MarkSocketAccepted();
+        string? bindingId = null;
+
+        if (!state.GetSnapshot().Connected)
+        {
+            state.MarkSocketAccepted();
+        }
 
         try
         {
@@ -51,13 +60,31 @@ public static class ChromeCdpBridgeWebSocketEndpoint
                 }
                 catch (JsonException ex)
                 {
-                    await SendAsync(socket, CreateError("INVALID_JSON", ex.Message), context.RequestAborted);
+                    await SendSerializedAsync(socket, sendGate, CreateError("INVALID_JSON", ex.Message), context.RequestAborted);
                     continue;
                 }
 
                 var response = session.Handle(message);
 
-                if (session.IsConnected)
+                if (session.IsConnected && bindingId is null)
+                {
+                    try
+                    {
+                        bindingId = commandConnection.Bind((outbound, cancellationToken) =>
+                            SendSerializedAsync(socket, sendGate, outbound, cancellationToken));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        await SendSerializedAsync(
+                            socket,
+                            sendGate,
+                            CreateError("BRIDGE_ALREADY_CONNECTED", "Another Chrome extension bridge is already active."),
+                            context.RequestAborted);
+                        break;
+                    }
+                }
+
+                if (session.IsConnected && bindingId is not null)
                 {
                     state.MarkConnected(
                         session.ExtensionId,
@@ -66,14 +93,18 @@ public static class ChromeCdpBridgeWebSocketEndpoint
                         session.GrantedCapabilities);
                 }
 
-                if (message?.Kind is ChromeCdpBridgeMessageKinds.Event or ChromeCdpBridgeMessageKinds.Error)
+                if (message is not null && commandConnection.TryHandleInbound(message))
+                {
+                    state.RecordEvent($"correlated:{message.Kind}");
+                }
+                else if (message?.Kind is ChromeCdpBridgeMessageKinds.Event or ChromeCdpBridgeMessageKinds.Error)
                 {
                     state.RecordEvent(message.Kind);
                 }
 
                 if (response is not null)
                 {
-                    await SendAsync(socket, response, context.RequestAborted);
+                    await SendSerializedAsync(socket, sendGate, response, context.RequestAborted);
                 }
             }
         }
@@ -83,10 +114,18 @@ public static class ChromeCdpBridgeWebSocketEndpoint
         }
         catch (WebSocketException ex)
         {
-            state.MarkDisconnected($"Chrome bridge WebSocket error: {ex.WebSocketErrorCode}");
+            if (bindingId is not null)
+            {
+                state.MarkDisconnected($"Chrome bridge WebSocket error: {ex.WebSocketErrorCode}");
+            }
         }
         finally
         {
+            if (bindingId is not null)
+            {
+                commandConnection.Unbind(bindingId, "Chrome bridge disconnected.");
+            }
+
             if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
             {
                 try
@@ -95,11 +134,14 @@ public static class ChromeCdpBridgeWebSocketEndpoint
                 }
                 catch (WebSocketException)
                 {
-                    // Socket may already be gone; state is still reset below.
+                    // Socket may already be gone; active binding is reset above.
                 }
             }
 
-            state.MarkDisconnected("Chrome bridge disconnected.");
+            if (bindingId is not null)
+            {
+                state.MarkDisconnected("Chrome bridge disconnected.");
+            }
         }
     }
 
@@ -137,11 +179,23 @@ public static class ChromeCdpBridgeWebSocketEndpoint
         }
     }
 
-    private static Task SendAsync(WebSocket socket, ChromeCdpBridgeEnvelope message, CancellationToken cancellationToken)
+    private static async Task SendSerializedAsync(
+        WebSocket socket,
+        SemaphoreSlim sendGate,
+        ChromeCdpBridgeEnvelope message,
+        CancellationToken cancellationToken)
     {
-        var json = JsonSerializer.Serialize(message, JsonOptions);
-        var bytes = Encoding.UTF8.GetBytes(json);
-        return socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
+        await sendGate.WaitAsync(cancellationToken);
+        try
+        {
+            var json = JsonSerializer.Serialize(message, JsonOptions);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
+        }
+        finally
+        {
+            sendGate.Release();
+        }
     }
 
     private static ChromeCdpBridgeEnvelope CreateError(string code, string detail)
