@@ -32,4 +32,5 @@ public sealed record BrowserAction(
     string? Target = null,
     string? Value = null,
     string? RequiredCapability = null,
-    string? SnapshotToken = null);
+    string? SnapshotToken = null,
+    string? SemanticHint = null);
