@@ -93,6 +93,77 @@ public sealed class DevosTaskRunnerTests
         Assert.Contains("Save registration", result.PendingAction.SemanticHint, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ApprovedPendingCommitExecutesOnceAndRequiresReadbackWithoutPositiveEvidence()
+    {
+        var observation = Observation(
+            "https://portal.local/form",
+            "Form",
+            elements: new[]
+            {
+                new BrowserElement("d1", "button", "Save registration", "button", null, true)
+            },
+            snapshotToken: "snapshot-approve-1");
+        var browser = new FakeBrowserAdapter(observation);
+        var planner = new FakePlanner(new PlannerDecision(
+            "continue",
+            "Save registration",
+            new BrowserAction(BrowserActionKind.Click, Target: "d1", RequiredCapability: "browser.click")));
+        var store = new InMemoryCheckpointStore();
+        var runner = new DevosTaskRunner(planner, browser, new GovernancePolicy(), new SecurityChallengePolicy(), new ActionVerifier(), store);
+
+        var pending = await runner.RunOneStepAsync("task-5", "save registration");
+        var approved = await runner.ExecuteApprovedPendingActionAsync("task-5");
+        var checkpoint = await store.LoadAsync("task-5");
+
+        Assert.Equal(DevosTaskStatus.AwaitingApproval, pending.Status);
+        Assert.Equal(DevosTaskStatus.ReconciliationRequired, approved.Status);
+        Assert.True(browser.Executed);
+        Assert.Equal(1, browser.ExecutionCount);
+        Assert.Equal("approved-executed", checkpoint!.ApprovalState);
+        Assert.Equal("readback-required", checkpoint.ReconciliationState);
+        Assert.Null(checkpoint.PendingAction);
+    }
+
+    [Fact]
+    public async Task ApprovedPendingActionRequiresFreshApprovalWhenSemanticContextChanges()
+    {
+        var initial = Observation(
+            "https://portal.local/form",
+            "Form",
+            elements: new[]
+            {
+                new BrowserElement("d1", "button", "Save registration", "button", null, true)
+            },
+            snapshotToken: "snapshot-before");
+        var browser = new FakeBrowserAdapter(initial);
+        var planner = new FakePlanner(new PlannerDecision(
+            "continue",
+            "Save registration",
+            new BrowserAction(BrowserActionKind.Click, Target: "d1", RequiredCapability: "browser.click")));
+        var store = new InMemoryCheckpointStore();
+        var runner = new DevosTaskRunner(planner, browser, new GovernancePolicy(), new SecurityChallengePolicy(), new ActionVerifier(), store);
+
+        _ = await runner.RunOneStepAsync("task-6", "save registration");
+        browser.SetObservation(Observation(
+            "https://portal.local/form",
+            "Form changed",
+            elements: new[]
+            {
+                new BrowserElement("d1", "button", "Delete registration", "button", null, true)
+            },
+            snapshotToken: "snapshot-after"));
+
+        var approved = await runner.ExecuteApprovedPendingActionAsync("task-6");
+        var checkpoint = await store.LoadAsync("task-6");
+
+        Assert.Equal(DevosTaskStatus.AwaitingApproval, approved.Status);
+        Assert.False(browser.Executed);
+        Assert.Equal("approval-context-changed", checkpoint!.ReconciliationState);
+        Assert.NotNull(checkpoint.PendingAction);
+        Assert.Contains("Delete registration", checkpoint.PendingAction!.SemanticHint, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static BrowserObservation Observation(
         string url,
         string text,
@@ -143,12 +214,19 @@ public sealed class DevosTaskRunnerTests
         public IReadOnlySet<string> Capabilities { get; } = new HashSet<string> { "browser.navigate", "browser.form.submit", "browser.click" };
         public bool IsAvailable => true;
         public bool Executed { get; private set; }
+        public int ExecutionCount { get; private set; }
+
+        public void SetObservation(BrowserObservation observation)
+        {
+            _observation = observation;
+        }
 
         public Task<BrowserObservation> GetObservationAsync(CancellationToken cancellationToken = default) => Task.FromResult(_observation);
 
         public Task<BrowserActionResult> ExecuteAsync(BrowserAction action, CancellationToken cancellationToken = default)
         {
             Executed = true;
+            ExecutionCount++;
             if (action.Kind == BrowserActionKind.Navigate && action.Value is not null)
             {
                 _observation = Observation(action.Value, "Navigated");
