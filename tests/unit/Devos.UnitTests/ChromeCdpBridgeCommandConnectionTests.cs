@@ -6,13 +6,13 @@ namespace Devos.UnitTests;
 public sealed class ChromeCdpBridgeCommandConnectionTests
 {
     [Fact]
-    public void StartsDisconnectedAndRejectsCommands()
+    public async Task StartsDisconnectedAndRejectsCommands()
     {
         var connection = new ChromeCdpBridgeCommandConnection();
 
         Assert.False(connection.IsConnected);
         Assert.Null(connection.CurrentConnectionId);
-        Assert.Throws<ChromeCdpBridgeDisconnectedException>(() =>
+        await Assert.ThrowsAsync<ChromeCdpBridgeDisconnectedException>(() =>
             connection.SendAsync(ChromeCdpBridgeMessageKinds.Ping));
     }
 
