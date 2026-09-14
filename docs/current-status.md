@@ -6,7 +6,7 @@ Repository selected: `zzpsah/Devos-Browser`.
 
 Development branch: `feat/devos-browser-runtime-core`.
 
-Current milestone: Phase 0-3 foundation is CI-backed; Phase 5 Chrome/CDP bridge work has started as an incremental slice. Phase 4 synthetic-browser fixtures already exist for core contract testing, but the full browser fixture application is not yet complete.
+Current milestone: Phase 0-3 foundation is CI-backed; Phase 5 Chrome/CDP bridge now has a CI-backed loopback connection, correlated runtime command path, explicit tab attach, and normalized read-only observation slice. Phase 4 synthetic-browser fixtures already exist for core contract testing, but the full browser fixture application is not yet complete.
 
 ## Confirmed product direction
 
@@ -42,23 +42,29 @@ Core rule:
 - loopback WebSocket endpoint at `ws://127.0.0.1:8787/bridge`
 - runtime-side bridge session with hello/helloAck negotiation and ping/pong
 - explicit Chrome debugger attach/detach for runtime-selected tabs
-- bounded observation of an explicitly attached tab through CDP `Runtime.evaluate`
 - correlated runtime command broker with bounded command kinds, per-command timeout, correlation cleanup, disconnect failure propagation, and no blind replay
-- structured action execution remains fail-closed until the governed executor slice is implemented
+- active WebSocket command connection binding with stale-binding protection
+- idempotent explicit tab attach from the extension
+- bounded normalized page observation through CDP `Runtime.evaluate`
+- snapshot-scoped element refs (`d1`, `d2`, ...), form refs, table refs, and frame refs
+- observation mapping into the provider-independent `BrowserObservation` contract
+- read-only runtime endpoint: `GET /browser/tabs/{tabId}/observation`
+- observation failures mapped to bounded HTTP failure states instead of blind retry
+- structured mutation execution remains fail-closed until the governed executor slice is implemented
 - CI restore/build/test workflow
 
 ## Latest verified CI milestone
 
-Commit: `6b84d14a995618f3575dc10b45c0b5783d5dad70`
+Commit: `84d1f4aee53963f75efeb1aa423f9ae83529b6db`
 
-Pull-request workflow run: `34843456751`
+Push workflow run: `34863674312`
 
 Result:
 
 - restore: PASS
 - build: PASS
 - tests: PASS
-- test count: 70 passed / 0 failed
+- test count: 78 passed / 0 failed
 - build warnings: 0
 - build errors: 0
 
@@ -76,16 +82,19 @@ Working in code/CI:
 4. Runtime validates protocol, transport, endpoint and requested capabilities.
 5. Runtime returns a bounded capability grant.
 6. Runtime command broker creates correlated attach/detach/observe/action/ping commands with timeout and disconnect handling.
-7. Extension can attach only the requested tab and perform a bounded observation.
-8. Correlated extension event/error responses can complete the matching broker command without blind retry.
-9. Arbitrary action execution is rejected until a governed command executor is wired through the runtime.
+7. The active WebSocket session is bound to the command broker and rejects a second concurrent bridge.
+8. Extension attaches only a runtime-selected Chrome tab; repeated attach for the same tab is idempotent.
+9. Extension emits a bounded observation containing URL, title, visible text, interactive/semantic elements, forms, tables, frames, and document readiness.
+10. Runtime maps the observation into provider-independent protocol models and exposes it through a read-only endpoint.
+11. Element refs are snapshot-scoped and must be treated as stale after navigation or major DOM changes until a fresh observation is taken.
+12. Arbitrary action execution is still rejected until the governed command executor is wired through the runtime.
 
 Still missing before Chrome acceptance can be claimed:
 
-- WebSocket command broker binding/pump from runtime callers to the active extension connection
-- normalized DOM/accessibility element refs (`d1`, `d2`, ...)
-- governed navigation/click/type/read/wait execution
-- result/readback mapping into `BrowserActionResult`
+- governed navigation/read/wait execution through the bridge
+- controlled click/type/select execution using fresh element refs
+- positive result/readback mapping into `BrowserActionResult`
+- observation freshness/staleness token enforcement for mutation actions
 - multi-tab and frame contract completion
 - downloads/screenshots/network events
 - authenticated localhost bridge or native-messaging hardening
@@ -93,6 +102,6 @@ Still missing before Chrome acceptance can be claimed:
 
 ## Next slice
 
-Bind the command broker to the active WebSocket connection and implement the minimal governed read-only browser path (`attach -> observe -> normalized observation`). After that, add controlled navigation/click/type/read/wait execution behind existing governance.
+Implement the first governed Chrome action executor for low-risk actions (`navigate`, `read`, `wait`) with bounded payloads, fresh observation/readback, and tests. Keep click/type/select fail-closed until the observation-ref freshness boundary is enforced. Then add controlled mutations behind existing governance and verification.
 
 Keep the PR draft. Do not publish binaries and do not merge `main` until explicit user approval and separate real-machine validation are complete.
