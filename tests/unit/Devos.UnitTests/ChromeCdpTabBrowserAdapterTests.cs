@@ -83,7 +83,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             Target: "d1",
             RequiredCapability: "browser.click",
             SnapshotToken: observation.SnapshotToken,
-            SemanticHint: "button Open students"));
+            SemanticHint: "button Open students button"));
 
         Assert.True(result.Success);
         Assert.Single(commands.Calls);
@@ -106,7 +106,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             Value: "Prashant",
             RequiredCapability: "browser.type",
             SnapshotToken: observation.SnapshotToken,
-            SemanticHint: "textbox Student name"));
+            SemanticHint: "textbox Student name text"));
 
         Assert.True(result.Success);
         var action = Assert.Single(commands.Calls).Payload!.Value.GetProperty("action");
@@ -127,7 +127,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             Value: "11",
             RequiredCapability: "browser.select",
             SnapshotToken: observation.SnapshotToken,
-            SemanticHint: "combobox Class"));
+            SemanticHint: "combobox Class select"));
 
         Assert.True(result.Success);
         var action = Assert.Single(commands.Calls).Payload!.Value.GetProperty("action");
@@ -145,7 +145,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             BrowserActionKind.Click,
             Target: "d1",
             SnapshotToken: "snapshot-1",
-            SemanticHint: "button Open students"));
+            SemanticHint: "button Open students button"));
 
         Assert.False(result.Success);
         Assert.Contains("stale", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -163,10 +163,28 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             BrowserActionKind.Click,
             Target: "d1",
             SnapshotToken: "older-snapshot",
-            SemanticHint: "button Open students"));
+            SemanticHint: "button Open students button"));
 
         Assert.False(result.Success);
         Assert.Contains("stale", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(commands.Calls);
+    }
+
+    [Fact]
+    public async Task SemanticContextMismatchFailsClosed()
+    {
+        var commands = new FakeCommandClient();
+        var adapter = NewAdapter(commands);
+        var observation = await adapter.GetObservationAsync();
+
+        var result = await adapter.ExecuteAsync(new BrowserAction(
+            BrowserActionKind.Click,
+            Target: "d1",
+            SnapshotToken: observation.SnapshotToken,
+            SemanticHint: "button Harmless button"));
+
+        Assert.False(result.Success);
+        Assert.Contains("semantic", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(commands.Calls);
     }
 
@@ -180,7 +198,7 @@ public sealed class ChromeCdpTabBrowserAdapterTests
             BrowserActionKind.Click,
             Target: "d1",
             SnapshotToken: observation.SnapshotToken,
-            SemanticHint: "button Open students");
+            SemanticHint: "button Open students button");
 
         var first = await adapter.ExecuteAsync(action);
         var second = await adapter.ExecuteAsync(action);
