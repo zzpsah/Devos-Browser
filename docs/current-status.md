@@ -4,9 +4,9 @@
 
 Repository selected: `zzpsah/Devos-Browser`.
 
-Branch initialized: `feat/devos-browser-runtime-core`.
+Development branch: `feat/devos-browser-runtime-core`.
 
-Current milestone: Phase 0 / Phase 1 foundation moving into Phase 2 core runtime skeleton.
+Current milestone: Phase 0-3 foundation is CI-backed; Phase 5 Chrome/CDP bridge work has started as an incremental slice. Phase 4 synthetic-browser fixtures already exist for core contract testing, but the full browser fixture application is not yet complete.
 
 ## Confirmed product direction
 
@@ -18,32 +18,79 @@ Core rule:
 
 ## Implemented so far
 
-- repository skeleton
-- architecture/runtime/protocol/security docs
+- repository skeleton and .NET solution
+- architecture/runtime/protocol/security/provider-contract docs
 - capability abstractions and router
-- richer capability route result with scoring, confidence, diagnostics, constraints, and experimental-provider blocking
+- capability route scoring, confidence, diagnostics, constraints, and experimental-provider blocking
 - browser/extraction/AI abstractions
 - deterministic bounded-command planner
 - governance classification with semantic commit detection
-- protocol negotiation
+- protocol versioning and negotiation
 - security-challenge detection and fail-closed synthetic challenge policy
 - action verifier
 - in-memory checkpoint store
-- one-step task runner
+- one-step governed task runner
 - runtime task registry
-- minimal server API skeleton
+- minimal server API
 - sensitive-value redactor and observation sanitizer
-- synthetic browser adapter
+- synthetic browser adapter and reusable browser-adapter contract harness
 - synthetic portal contract routes for login, dashboard, records, challenge pages, iframe, session expiry, rate limit, submit success, and uncertain readback
-- provider contract documentation
-- reusable browser-adapter contract test harness
-- Chrome/CDP bridge skeleton with handshake, capability grants, localhost/native-messaging boundary, loopback enforcement, and fail-closed stub adapter
-- CI build/test workflow
+- Chrome/CDP bridge handshake, capability grants, loopback enforcement, and fail-closed adapter skeleton
+- Manifest V3 DEVOS Chrome extension skeleton
+- extension connection-state popup and reconnect flow
+- versioned extension/runtime bridge envelope with schema validation
+- loopback WebSocket endpoint at `ws://127.0.0.1:8787/bridge`
+- runtime-side bridge session with hello/helloAck negotiation and ping/pong
+- explicit Chrome debugger attach/detach for runtime-selected tabs
+- bounded observation of an explicitly attached tab through CDP `Runtime.evaluate`
+- structured action execution remains fail-closed until the governed executor slice is implemented
+- CI restore/build/test workflow
 
-## Latest local milestone status
+## Latest verified CI milestone
 
-The branch must remain draft until CI confirms the latest commit. No binary artifact should be published at this stage.
+Commit: `47214e55d1cb06047e7ab5da86498893ee162de0`
+
+Push workflow run: `34843128339`
+
+Result:
+
+- restore: PASS
+- build: PASS
+- tests: PASS
+- test count: 64 passed / 0 failed
+- build warnings: 0
+- build errors: 0
+
+This is CI evidence only. A real local Chrome extension/runtime acceptance test has **not** yet been performed and must be tracked separately.
+
+No binary/release artifact has been published.
+
+## Current Chrome bridge boundary
+
+Working in code/CI:
+
+1. Runtime listens on loopback `127.0.0.1:8787` by default.
+2. Extension connects to the `/bridge` WebSocket endpoint.
+3. Extension sends a versioned hello payload.
+4. Runtime validates protocol, transport, endpoint and requested capabilities.
+5. Runtime returns a bounded capability grant.
+6. Runtime may request attach/detach/observe messages in the bridge protocol.
+7. Extension can attach only the requested tab and perform a bounded observation.
+8. Arbitrary action execution is rejected until a governed command executor is wired through the runtime.
+
+Still missing before Chrome acceptance can be claimed:
+
+- runtime-to-extension command broker/correlation path
+- normalized DOM/accessibility element refs (`d1`, `d2`, ...)
+- governed navigation/click/type/read/wait execution
+- result/readback mapping into `BrowserActionResult`
+- multi-tab and frame contract completion
+- downloads/screenshots/network events
+- authenticated localhost bridge or native-messaging hardening
+- real-machine Chrome acceptance tests
 
 ## Next slice
 
-Chrome extension skeleton: Manifest V3 package, service worker handshake flow, connection state, localhost/native-messaging transport stubs, and tests for bridge message schema.
+Implement the bidirectional runtime-to-extension command broker with correlation/timeouts and tests, then wire a minimal governed read-only browser path (`attach -> observe -> normalized observation`) before adding controlled mutation actions.
+
+Keep the PR draft. Do not publish binaries and do not merge `main` until explicit user approval and separate real-machine validation are complete.
