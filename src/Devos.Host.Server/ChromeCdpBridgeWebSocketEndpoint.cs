@@ -1,0 +1,211 @@
+using System.Net;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using Devos.Browser.ChromeCdp;
+
+namespace Devos.Host.Server;
+
+public static class ChromeCdpBridgeWebSocketEndpoint
+{
+    private const int MaxMessageBytes = 256 * 1024;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    public static async Task HandleAsync(
+        HttpContext context,
+        BrowserBridgeRuntimeState state,
+        ChromeCdpBridgeCommandConnection commandConnection)
+    {
+        if (context.Connection.RemoteIpAddress is not { } remoteAddress || !IPAddress.IsLoopback(remoteAddress))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsync("DEVOS browser bridge accepts loopback connections only.");
+            return;
+        }
+
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsync("WebSocket upgrade required.");
+            return;
+        }
+
+        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        using var sendGate = new SemaphoreSlim(1, 1);
+        var session = new ChromeCdpBridgeSession();
+        string? bindingId = null;
+
+        if (!state.GetSnapshot().Connected)
+        {
+            state.MarkSocketAccepted();
+        }
+
+        try
+        {
+            while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
+            {
+                var raw = await ReceiveTextMessageAsync(socket, context.RequestAborted);
+                if (raw is null)
+                {
+                    break;
+                }
+
+                ChromeCdpBridgeEnvelope? message;
+                try
+                {
+                    message = JsonSerializer.Deserialize<ChromeCdpBridgeEnvelope>(raw, JsonOptions);
+                }
+                catch (JsonException ex)
+                {
+                    await SendSerializedAsync(socket, sendGate, CreateError("INVALID_JSON", ex.Message), context.RequestAborted);
+                    continue;
+                }
+
+                var response = session.Handle(message);
+
+                if (session.IsConnected && bindingId is null)
+                {
+                    try
+                    {
+                        bindingId = commandConnection.Bind((outbound, cancellationToken) =>
+                            SendSerializedAsync(socket, sendGate, outbound, cancellationToken));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        await SendSerializedAsync(
+                            socket,
+                            sendGate,
+                            CreateError("BRIDGE_ALREADY_CONNECTED", "Another Chrome extension bridge is already active."),
+                            context.RequestAborted);
+                        break;
+                    }
+                }
+
+                if (session.IsConnected && bindingId is not null)
+                {
+                    state.MarkConnected(
+                        session.ExtensionId,
+                        session.ExtensionVersion,
+                        "1.0",
+                        session.GrantedCapabilities);
+                }
+
+                if (message is not null && commandConnection.TryHandleInbound(message))
+                {
+                    state.RecordEvent($"correlated:{message.Kind}");
+                }
+                else if (message?.Kind is ChromeCdpBridgeMessageKinds.Event or ChromeCdpBridgeMessageKinds.Error)
+                {
+                    state.RecordEvent(message.Kind);
+                }
+
+                if (response is not null)
+                {
+                    await SendSerializedAsync(socket, sendGate, response, context.RequestAborted);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // Normal request shutdown.
+        }
+        catch (WebSocketException ex)
+        {
+            if (bindingId is not null)
+            {
+                state.MarkDisconnected($"Chrome bridge WebSocket error: {ex.WebSocketErrorCode}");
+            }
+        }
+        finally
+        {
+            if (bindingId is not null)
+            {
+                commandConnection.Unbind(bindingId, "Chrome bridge disconnected.");
+            }
+
+            if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                try
+                {
+                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "DEVOS bridge closing", CancellationToken.None);
+                }
+                catch (WebSocketException)
+                {
+                    // Socket may already be gone; active binding is reset above.
+                }
+            }
+
+            if (bindingId is not null)
+            {
+                state.MarkDisconnected("Chrome bridge disconnected.");
+            }
+        }
+    }
+
+    private static async Task<string?> ReceiveTextMessageAsync(WebSocket socket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[16 * 1024];
+        using var stream = new MemoryStream();
+
+        while (true)
+        {
+            var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                return null;
+            }
+
+            if (result.MessageType != WebSocketMessageType.Text)
+            {
+                await socket.CloseAsync(WebSocketCloseStatus.InvalidMessageType, "Text messages only", cancellationToken);
+                return null;
+            }
+
+            if (stream.Length + result.Count > MaxMessageBytes)
+            {
+                await socket.CloseAsync(WebSocketCloseStatus.MessageTooBig, "Bridge message too large", cancellationToken);
+                return null;
+            }
+
+            stream.Write(buffer, 0, result.Count);
+            if (result.EndOfMessage)
+            {
+                return Encoding.UTF8.GetString(stream.ToArray());
+            }
+        }
+    }
+
+    private static async Task SendSerializedAsync(
+        WebSocket socket,
+        SemaphoreSlim sendGate,
+        ChromeCdpBridgeEnvelope message,
+        CancellationToken cancellationToken)
+    {
+        await sendGate.WaitAsync(cancellationToken);
+        try
+        {
+            var json = JsonSerializer.Serialize(message, JsonOptions);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
+        }
+        finally
+        {
+            sendGate.Release();
+        }
+    }
+
+    private static ChromeCdpBridgeEnvelope CreateError(string code, string detail)
+    {
+        var payload = JsonSerializer.SerializeToElement(new { code, message = detail }, JsonOptions);
+        return new ChromeCdpBridgeEnvelope(
+            ProtocolVersion: "1.0",
+            MessageId: $"runtime-{Guid.NewGuid():N}",
+            Kind: ChromeCdpBridgeMessageKinds.Error,
+            Timestamp: DateTimeOffset.UtcNow,
+            Payload: payload);
+    }
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Devos.AI.Abstractions\Devos.AI.Abstractions.csproj" />
+    <ProjectReference Include="..\Devos.Browser.Abstractions\Devos.Browser.Abstractions.csproj" />
+    <ProjectReference Include="..\Devos.Checkpoints\Devos.Checkpoints.csproj" />
+    <ProjectReference Include="..\Devos.Governance\Devos.Governance.csproj" />
+    <ProjectReference Include="..\Devos.Verification\Devos.Verification.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

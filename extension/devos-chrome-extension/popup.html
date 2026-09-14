@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DEVOS Browser Bridge</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <h1>DEVOS Browser Bridge</h1>
+    <div class="row"><span>Status</span><strong id="status">loading…</strong></div>
+    <div class="row"><span>Protocol</span><span id="protocol">—</span></div>
+    <div class="row"><span>Extension</span><span id="version">—</span></div>
+    <p id="detail"></p>
+    <button id="reconnect" type="button">Reconnect</button>
+    <p class="note">The extension is only a thin bridge. Planning, governance, approval and verification remain in DEVOS Runtime.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
