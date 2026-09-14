@@ -116,10 +116,8 @@ public sealed class DevosTaskRunner
 
         return action with
         {
-            SnapshotToken = action.SnapshotToken ?? observation.SnapshotToken,
-            SemanticHint = string.IsNullOrWhiteSpace(action.SemanticHint)
-                ? semanticHint
-                : action.SemanticHint
+            SnapshotToken = observation.SnapshotToken,
+            SemanticHint = semanticHint
         };
     }
 
