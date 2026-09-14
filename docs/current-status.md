@@ -21,6 +21,7 @@ Core rule:
 - repository skeleton
 - architecture/runtime/protocol/security docs
 - capability abstractions and router
+- richer capability route result with scoring, confidence, diagnostics, constraints, and experimental-provider blocking
 - browser/extraction/AI abstractions
 - deterministic bounded-command planner
 - governance classification with semantic commit detection
@@ -33,9 +34,15 @@ Core rule:
 - minimal server API skeleton
 - sensitive-value redactor and observation sanitizer
 - synthetic browser adapter
-- synthetic portal pages for login, dashboard, records, challenges, iframe, submit success, session expiry, rate limit, and uncertain commit readback
+- synthetic portal contract routes for login, dashboard, records, challenge pages, iframe, session expiry, rate limit, submit success, and uncertain readback
+- provider contract documentation
+- reusable browser-adapter contract test harness
 - CI build/test workflow
 
-## Latest milestone status
+## Latest local milestone status
 
-The branch remains draft. Binary artifacts are intentionally not published yet because the project is still core/synthetic-backend stage. Release artifacts should wait until browser-provider and packaging gates exist and pass.
+The branch must remain draft until CI confirms the latest commit. No binary artifact should be published at this stage.
+
+## Next slice
+
+Chrome/CDP bridge skeleton: define bridge transport messages, extension handshake models, localhost/native-messaging boundary, and a non-executing stub adapter behind the browser protocol.
