@@ -12,5 +12,6 @@
   <Project Path="src/Devos.Core/Devos.Core.csproj" />
   <Project Path="src/Devos.Runtime/Devos.Runtime.csproj" />
   <Project Path="src/Devos.Host.Server/Devos.Host.Server.csproj" />
+  <Project Path="src/Devos.Logging/Devos.Logging.csproj" />
   <Project Path="tests/unit/Devos.UnitTests/Devos.UnitTests.csproj" />
 </Solution>

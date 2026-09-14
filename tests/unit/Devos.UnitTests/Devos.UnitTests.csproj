@@ -7,7 +7,7 @@
     <ProjectReference Include="..\..\..\src\Devos.Capabilities.Router\Devos.Capabilities.Router.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Core\Devos.Core.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Governance\Devos.Governance.csproj" />
-    <ProjectReference Include="..\..\..\src\Devos.Runtime\Devos.Runtime.csproj" />
+    <ProjectReference Include="..\..\..\src\Devos.Logging\Devos.Logging.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Verification\Devos.Verification.csproj" />
   </ItemGroup>
   <PropertyGroup>
