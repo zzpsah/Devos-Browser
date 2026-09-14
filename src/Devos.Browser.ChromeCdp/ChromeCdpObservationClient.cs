@@ -66,14 +66,14 @@ public sealed class ChromeCdpObservationClient : IChromeCdpObservationClient
         var payload = response.Payload ?? throw new ChromeCdpObservationException(
             "Observation event payload is missing.");
 
-        if (!TryGetString(payload.Value, "event", out var eventName) ||
+        if (!TryGetString(payload, "event", out var eventName) ||
             !string.Equals(eventName, "observation", StringComparison.Ordinal))
         {
             throw new ChromeCdpObservationException(
                 $"Expected observation event payload but received '{eventName ?? "unknown"}'.");
         }
 
-        if (!payload.Value.TryGetProperty("observation", out var observation) ||
+        if (!payload.TryGetProperty("observation", out var observation) ||
             observation.ValueKind != JsonValueKind.Object)
         {
             throw new ChromeCdpObservationException(
@@ -96,7 +96,7 @@ public sealed class ChromeCdpObservationClient : IChromeCdpObservationClient
         var payload = response.Payload ?? throw new ChromeCdpObservationException(
             $"Bridge event '{expectedEvent}' payload is missing.");
 
-        if (!TryGetString(payload.Value, "event", out var eventName) ||
+        if (!TryGetString(payload, "event", out var eventName) ||
             !string.Equals(eventName, expectedEvent, StringComparison.Ordinal))
         {
             throw new ChromeCdpObservationException(
