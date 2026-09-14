@@ -21,6 +21,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Validate extension JavaScript
+        shell: pwsh
+        run: |
+          node --check extension/devos-chrome-extension/bridge-protocol.js
+          node --check extension/devos-chrome-extension/service-worker.js
+          node --check extension/devos-chrome-extension/popup.js
+
       - name: Restore
         run: dotnet restore Devos.BrowserRuntime.slnx
 
