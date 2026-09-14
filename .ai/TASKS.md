@@ -1,15 +1,20 @@
 # Tasks
 
 ## Active
-- Complete Managed Project Lifecycle onboarding and verify fresh `main` readback.
+- Recover authoritative browser/runtime requirements and any prior implementation evidence before feature development.
 
 ## Planned
-- Recover authoritative browser/runtime requirements and any prior implementation evidence.
+- Inspect source/history and any prior browser automation handoff evidence.
 - Define browser-provider/runtime architecture from verified requirements.
-- Add application code/tests only after recovery and planning.
+- Select the first bounded implementation objective and verification plan.
 
-## Blocked
-- Browser/runtime feature development is HOLD until onboarding is merged and the project is verified as `MANAGED`.
+## Current HOLD / limits
+- Application behavior is not yet verified merely because project onboarding is complete.
+- Do not invent browser/provider capability from memory or vendor familiarity.
+- Deployment, credentials, permissions, destructive operations, and production actions remain separately gated.
 
 ## Completed recently
-- Repository discovery identified the project as previously unmanaged by DevOS.
+- Managed Project Lifecycle onboarding completed.
+- Onboarding PR #2 merged at `dd94eb11984ea5ab08e1ff1b89307dfefcc15d0b`.
+- Development OS Context Sync run `34904321784` succeeded.
+- Fresh main readback verified the repository as DevOS `MANAGED`.
