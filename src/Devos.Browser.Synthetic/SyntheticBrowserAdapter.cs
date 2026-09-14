@@ -5,12 +5,11 @@ namespace Devos.Browser.Synthetic;
 
 public sealed class SyntheticBrowserAdapter : IBrowserAdapter
 {
-    private const string DefaultHost = "https://synthetic-portal.local";
     private readonly object _sync = new();
     private readonly string _host;
     private readonly List<string> _backStack = new();
-    private readonly Dictionary<string, string> _typedValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyList<SyntheticStudentRecord> _records;
+    private readonly Dictionary<string, string> _typedValues = new(StringComparer.OrdinalIgnoreCase);
     private string _path = "/login";
     private string? _lastMessage;
     private bool _uncertainCommitCompleted;
@@ -18,7 +17,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
 
     public SyntheticBrowserAdapter(string? host = null)
     {
-        _host = string.IsNullOrWhiteSpace(host) ? DefaultHost : host.TrimEnd('/');
+        _host = string.IsNullOrWhiteSpace(host) ? "https://synthetic-portal.local" : host.TrimEnd('/');
         _records = Enumerable.Range(1, 100)
             .Select(index => new SyntheticStudentRecord(index, $"REG{index:0000}", $"Synthetic Student {index:000}", index % 3 == 0 ? "Pending" : "Ready"))
             .ToArray();
@@ -76,7 +75,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
             {
                 case BrowserActionKind.Navigate:
                 case BrowserActionKind.OpenTab:
-                    NavigateTo(action.Value ?? action.Target ?? "/");
+                    NavigateTo(action.Value ?? action.Target ?? "/login");
                     break;
                 case BrowserActionKind.Back:
                     Back();
@@ -130,11 +129,13 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
     private void NavigateTo(string target)
     {
         var next = NormalizePath(target);
-        if (!string.Equals(_path, next, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(_path, next, StringComparison.OrdinalIgnoreCase))
         {
-            _backStack.Add(_path);
-            _path = next;
+            return;
         }
+
+        _backStack.Add(_path);
+        _path = next;
     }
 
     private void Back()
@@ -144,9 +145,8 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
             return;
         }
 
-        var previous = _backStack[^1];
+        _path = _backStack[^1];
         _backStack.RemoveAt(_backStack.Count - 1);
-        _path = previous;
     }
 
     private void HandleClick(string? target)
@@ -157,52 +157,39 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
         if (page == "/login" && (normalized is "d3" or "sign in" or "login"))
         {
             NavigateTo("/dashboard");
-            return;
         }
-
-        if (normalized.Contains("student", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d1"))
+        else if (normalized.Contains("student", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d1"))
         {
             NavigateTo("/students");
-            return;
         }
-
-        if (normalized.Contains("captcha", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d2"))
+        else if (normalized.Contains("captcha", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d2"))
         {
             NavigateTo("/test/captcha");
-            return;
         }
-
-        if (normalized.Contains("otp", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d3"))
+        else if (normalized.Contains("otp", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d3"))
         {
             NavigateTo("/test/otp");
-            return;
         }
-
-        if (normalized.Contains("mfa", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d4"))
+        else if (normalized.Contains("mfa", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d4"))
         {
             NavigateTo("/test/mfa");
-            return;
         }
-
-        if (normalized.Contains("uncertain", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d5"))
+        else if (normalized.Contains("uncertain", StringComparison.Ordinal) || (page == "/dashboard" && normalized == "d5"))
         {
             NavigateTo("/uncertain-commit");
-            return;
         }
-
-        if (normalized.Contains("next", StringComparison.Ordinal))
+        else if (normalized.Contains("next", StringComparison.Ordinal))
         {
             NavigateTo("/students?page=2");
-            return;
         }
-
-        if (normalized.Contains("dashboard", StringComparison.Ordinal))
+        else if (normalized.Contains("dashboard", StringComparison.Ordinal))
         {
             NavigateTo("/dashboard");
-            return;
         }
-
-        _lastMessage = string.IsNullOrWhiteSpace(target) ? "Synthetic click executed." : $"Synthetic click executed: {target}";
+        else
+        {
+            _lastMessage = string.IsNullOrWhiteSpace(target) ? "Synthetic click executed." : $"Synthetic click executed: {target}";
+        }
     }
 
     private void HandleType(string? target, string? value)
@@ -254,109 +241,106 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
         var title = "Synthetic Portal";
         var visibleText = "Synthetic Portal";
 
-        switch (pathOnly)
+        if (pathOnly is "/" or "/login")
         {
-            case "/":
-            case "/login":
-                title = "Synthetic Portal Login";
-                visibleText = "Synthetic Portal Login Username Password Sign in";
-                elements.Add(new BrowserElement("d1", "textbox", "Username", "text", null, true));
-                elements.Add(new BrowserElement("d2", "textbox", "Password", "password", null, true));
-                elements.Add(new BrowserElement("d3", "button", "Sign in", "button", null, true));
-                forms.Add(new BrowserForm("f-login", new[] { "d1", "d2", "d3" }));
-                break;
-
-            case "/dashboard":
-                title = "Synthetic Portal Dashboard";
-                visibleText = "Dashboard Student Records Mock CAPTCHA Mock OTP Mock MFA Uncertain Commit Downloads";
-                elements.Add(new BrowserElement("d1", "link", "Student Records", "link", "/students", true));
-                elements.Add(new BrowserElement("d2", "link", "Mock CAPTCHA", "link", "/test/captcha", true));
-                elements.Add(new BrowserElement("d3", "link", "Mock OTP", "link", "/test/otp", true));
-                elements.Add(new BrowserElement("d4", "link", "Mock MFA", "link", "/test/mfa", true));
-                elements.Add(new BrowserElement("d5", "link", "Uncertain Commit", "link", "/uncertain-commit", true));
-                break;
-
-            case "/students":
-                title = "Synthetic Student Records";
-                visibleText = StudentRecordsText();
-                elements.Add(new BrowserElement("d1", "textbox", "Search students", "search", null, true));
-                elements.Add(new BrowserElement("d2", "button", "Next page", "button", null, true));
-                elements.Add(new BrowserElement("d3", "button", "Submit selected student", "button", null, true));
-                elements.Add(new BrowserElement("d4", "button", "Download export", "button", null, true));
-                elements.Add(new BrowserElement("d5", "button", "Upload document", "button", null, true));
-                elements.Add(new BrowserElement("d6", "link", "Dashboard", "link", "/dashboard", true));
-                tables.Add(new BrowserTable("t-students", _records.Count, 4));
-                break;
-
-            case "/test/captcha":
-                title = "Synthetic CAPTCHA";
-                visibleText = "CAPTCHA required devos-synthetic-fixture fixture:captcha synthetic only. Human intervention normally required.";
-                elements.Add(new BrowserElement("d1", "textbox", "Synthetic CAPTCHA answer", "text", null, true));
-                elements.Add(new BrowserElement("d2", "button", "Continue", "button", null, true));
-                break;
-
-            case "/test/otp":
-                title = "Synthetic OTP";
-                visibleText = "One-time password OTP required devos-synthetic-fixture fixture:otp synthetic code 000111.";
-                elements.Add(new BrowserElement("d1", "textbox", "OTP", "text", null, true));
-                elements.Add(new BrowserElement("d2", "button", "Verify", "button", null, true));
-                break;
-
-            case "/test/mfa":
-                title = "Synthetic MFA";
-                visibleText = "MFA multi-factor approval required devos-synthetic-fixture fixture:mfa synthetic approval pending.";
-                elements.Add(new BrowserElement("d1", "button", "Synthetic approve", "button", null, true));
-                break;
-
-            case "/test/turnstile":
-                title = "Synthetic Turnstile";
-                visibleText = "Turnstile challenge devos-synthetic-fixture fixture:turnstile synthetic only.";
-                break;
-
-            case "/test/recaptcha":
-                title = "Synthetic reCAPTCHA";
-                visibleText = "reCAPTCHA challenge devos-synthetic-fixture fixture:recaptcha synthetic only.";
-                break;
-
-            case "/session-expired":
-                title = "Synthetic Session Expired";
-                visibleText = "Session expired. Please sign in again.";
-                break;
-
-            case "/rate-limit":
-                title = "Synthetic Rate Limit";
-                visibleText = "Rate limit reached. Too many requests.";
-                break;
-
-            case "/iframe":
-                title = "Synthetic Iframe Page";
-                visibleText = "Outer page with embedded synthetic frame.";
-                frames.Add(new BrowserFrame("frame-1", $"{_host}/frame-content", "Synthetic Inner Frame"));
-                break;
-
-            case "/uncertain-commit":
-                title = "Synthetic Uncertain Commit";
-                visibleText = "Uncertain commit simulator. Submit may have completed but there is no immediate success evidence.";
-                elements.Add(new BrowserElement("d1", "button", "Submit uncertain transaction", "button", null, true));
-                elements.Add(new BrowserElement("d2", "link", "Readback", "link", "/uncertain-commit/readback", true));
-                break;
-
-            case "/uncertain-commit/readback":
-                title = "Synthetic Readback";
-                visibleText = _uncertainCommitCompleted
-                    ? "Success submitted complete reference SYN-UNCERTAIN-0001 after provider readback."
-                    : "ABSENT: no synthetic uncertain commit was found during readback.";
-                break;
-
-            case "/submit-success":
-                title = "Synthetic Submit Success";
-                visibleText = "Success submitted complete reference SYN-SUBMIT-0001.";
-                break;
-
-            default:
-                title = "Synthetic Not Found";
-                visibleText = $"Synthetic page not found: {_path}";
-                break;
+            title = "Synthetic Portal Login";
+            visibleText = "Synthetic Portal Login Username Password Sign in";
+            elements.Add(new BrowserElement("d1", "textbox", "Username", "text", null, true));
+            elements.Add(new BrowserElement("d2", "textbox", "Password", "password", null, true));
+            elements.Add(new BrowserElement("d3", "button", "Sign in", "button", null, true));
+            forms.Add(new BrowserForm("f-login", new[] { "d1", "d2", "d3" }));
+        }
+        else if (pathOnly == "/dashboard")
+        {
+            title = "Synthetic Portal Dashboard";
+            visibleText = "Dashboard Student Records Mock CAPTCHA Mock OTP Mock MFA Uncertain Commit Downloads";
+            elements.Add(new BrowserElement("d1", "link", "Student Records", "link", "/students", true));
+            elements.Add(new BrowserElement("d2", "link", "Mock CAPTCHA", "link", "/test/captcha", true));
+            elements.Add(new BrowserElement("d3", "link", "Mock OTP", "link", "/test/otp", true));
+            elements.Add(new BrowserElement("d4", "link", "Mock MFA", "link", "/test/mfa", true));
+            elements.Add(new BrowserElement("d5", "link", "Uncertain Commit", "link", "/uncertain-commit", true));
+        }
+        else if (pathOnly == "/students")
+        {
+            title = "Synthetic Student Records";
+            visibleText = StudentRecordsText();
+            elements.Add(new BrowserElement("d1", "textbox", "Search students", "search", null, true));
+            elements.Add(new BrowserElement("d2", "button", "Next page", "button", null, true));
+            elements.Add(new BrowserElement("d3", "button", "Submit selected student", "button", null, true));
+            elements.Add(new BrowserElement("d4", "button", "Download export", "button", null, true));
+            elements.Add(new BrowserElement("d5", "button", "Upload document", "button", null, true));
+            elements.Add(new BrowserElement("d6", "link", "Dashboard", "link", "/dashboard", true));
+            tables.Add(new BrowserTable("t-students", _records.Count, 4));
+        }
+        else if (pathOnly == "/test/captcha")
+        {
+            title = "Synthetic CAPTCHA";
+            visibleText = "CAPTCHA required devos-synthetic-fixture fixture:captcha synthetic only. Human intervention normally required.";
+            elements.Add(new BrowserElement("d1", "textbox", "Synthetic CAPTCHA answer", "text", null, true));
+            elements.Add(new BrowserElement("d2", "button", "Continue", "button", null, true));
+        }
+        else if (pathOnly == "/test/otp")
+        {
+            title = "Synthetic OTP";
+            visibleText = "One-time password OTP required devos-synthetic-fixture fixture:otp synthetic code 000111.";
+            elements.Add(new BrowserElement("d1", "textbox", "OTP", "text", null, true));
+            elements.Add(new BrowserElement("d2", "button", "Verify", "button", null, true));
+        }
+        else if (pathOnly == "/test/mfa")
+        {
+            title = "Synthetic MFA";
+            visibleText = "MFA multi-factor approval required devos-synthetic-fixture fixture:mfa synthetic approval pending.";
+            elements.Add(new BrowserElement("d1", "button", "Synthetic approve", "button", null, true));
+        }
+        else if (pathOnly == "/test/turnstile")
+        {
+            title = "Synthetic Turnstile";
+            visibleText = "Turnstile challenge devos-synthetic-fixture fixture:turnstile synthetic only.";
+        }
+        else if (pathOnly == "/test/recaptcha")
+        {
+            title = "Synthetic reCAPTCHA";
+            visibleText = "reCAPTCHA challenge devos-synthetic-fixture fixture:recaptcha synthetic only.";
+        }
+        else if (pathOnly == "/session-expired")
+        {
+            title = "Synthetic Session Expired";
+            visibleText = "Session expired. Please sign in again.";
+        }
+        else if (pathOnly == "/rate-limit")
+        {
+            title = "Synthetic Rate Limit";
+            visibleText = "Rate limit reached. Too many requests.";
+        }
+        else if (pathOnly == "/iframe")
+        {
+            title = "Synthetic Iframe Page";
+            visibleText = "Outer page with embedded synthetic frame.";
+            frames.Add(new BrowserFrame("frame-1", $"{_host}/frame-content", "Synthetic Inner Frame"));
+        }
+        else if (pathOnly == "/uncertain-commit")
+        {
+            title = "Synthetic Uncertain Commit";
+            visibleText = "Uncertain commit simulator. Submit may have completed but there is no immediate success evidence.";
+            elements.Add(new BrowserElement("d1", "button", "Submit uncertain transaction", "button", null, true));
+            elements.Add(new BrowserElement("d2", "link", "Readback", "link", "/uncertain-commit/readback", true));
+        }
+        else if (pathOnly == "/uncertain-commit/readback")
+        {
+            title = "Synthetic Readback";
+            visibleText = _uncertainCommitCompleted
+                ? "Success submitted complete reference SYN-UNCERTAIN-0001 after provider readback."
+                : "ABSENT: no synthetic uncertain commit was found during readback.";
+        }
+        else if (pathOnly == "/submit-success")
+        {
+            title = "Synthetic Submit Success";
+            visibleText = "Success submitted complete reference SYN-SUBMIT-0001.";
+        }
+        else
+        {
+            title = "Synthetic Not Found";
+            visibleText = $"Synthetic page not found: {_path}";
         }
 
         if (!string.IsNullOrWhiteSpace(_lastMessage))
@@ -382,7 +366,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
         var page = _path.Contains("page=2", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
         var start = (page - 1) * 10;
         var rows = _records.Skip(start).Take(10).Select(record => $"{record.Serial}:{record.RegistrationNo}:{record.Name}:{record.Status}");
-        return $"Student Records page {page}. Total synthetic records: {_records.Count}. " + string.Join(' ', rows);
+        return $"Student Records page {page}. Total synthetic records: {_records.Count}. " + string.Join(" ", rows);
     }
 
     private string CurrentUrl() => _host + _path;
