@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="src">
+    <Project Path="src/Devos.Protocol/Devos.Protocol.csproj" />
+    <Project Path="src/Devos.Capabilities.Abstractions/Devos.Capabilities.Abstractions.csproj" />
+    <Project Path="src/Devos.Capabilities.Router/Devos.Capabilities.Router.csproj" />
+    <Project Path="src/Devos.Browser.Abstractions/Devos.Browser.Abstractions.csproj" />
+    <Project Path="src/Devos.Extraction.Abstractions/Devos.Extraction.Abstractions.csproj" />
+    <Project Path="src/Devos.AI.Abstractions/Devos.AI.Abstractions.csproj" />
+    <Project Path="src/Devos.AI.Deterministic/Devos.AI.Deterministic.csproj" />
+    <Project Path="src/Devos.Governance/Devos.Governance.csproj" />
+    <Project Path="src/Devos.Checkpoints/Devos.Checkpoints.csproj" />
+  </Folder>
+  <Folder Name="tests">
+    <Project Path="tests/unit/Devos.UnitTests/Devos.UnitTests.csproj" />
+  </Folder>
+</Solution>
