@@ -10,7 +10,8 @@ public sealed record BrowserObservation(
     IReadOnlyList<BrowserForm> Forms,
     IReadOnlyList<BrowserTable> Tables,
     IReadOnlyList<BrowserFrame> Frames,
-    string? NetworkState);
+    string? NetworkState,
+    string? SnapshotToken = null);
 
 public sealed record BrowserElement(
     string Ref,
