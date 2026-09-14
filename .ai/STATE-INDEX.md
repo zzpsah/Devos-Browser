@@ -6,8 +6,8 @@ Generated automatically by Development OS.
 
 ## Repository
 - Branch: main
-- HEAD: dd94eb11984ea5ab08e1ff1b89307dfefcc15d0b
-- Last commit: Merge pull request #2 from zzpsah/devos/onboard-managed-project
+- HEAD: 9293e4057aa8e6989a8a40ca55aae4a70858738f
+- Last commit: Merge pull request #3 from zzpsah/docs/close-devos-onboarding
 - Last commit date: 2026-09-15
 - Last commit author: PRASHANT KUMAR SAH
 
@@ -23,7 +23,7 @@ Generated automatically by Development OS.
 
 ## Recent activity
 - Latest session: session-template.md
-- Meaningful change detected: true
+- Meaningful change detected: false
 
 ## Recovery
 1. Read `AGENTS.md` and `.ai/manifest.yaml`.
