@@ -250,9 +250,11 @@ public sealed class ChromeCdpTabBrowserAdapter : IBrowserAdapter
             return $"Element ref '{action.Target}' is not present and visible in the active observation snapshot.";
         }
 
-        if (string.IsNullOrWhiteSpace(action.SemanticHint))
+        var observedSemanticHint = BuildSemanticHint(element);
+        if (string.IsNullOrWhiteSpace(action.SemanticHint) ||
+            !string.Equals(action.SemanticHint, observedSemanticHint, StringComparison.Ordinal))
         {
-            return "Element action is missing resolved semantic context required by governance.";
+            return "Element action semantic context does not match the active observation snapshot.";
         }
 
         if (action.Kind is BrowserActionKind.Type or BrowserActionKind.Select && action.Value is null)
@@ -262,6 +264,9 @@ public sealed class ChromeCdpTabBrowserAdapter : IBrowserAdapter
 
         return null;
     }
+
+    private static string BuildSemanticHint(BrowserElement element) =>
+        string.Join(' ', element.Role, element.Text, element.Type, element.Href).Trim();
 
     private static bool IsEnabled(BrowserActionKind kind) => kind is
         BrowserActionKind.Navigate or
