@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Devos.Protocol;
 
 namespace Devos.Browser.ChromeCdp;
 
@@ -104,7 +105,7 @@ public sealed class ChromeCdpBridgeSession
     {
         try
         {
-            return Protocol.ProtocolNegotiator.Negotiate(_options.RequiredProtocolVersion, supportedVersion).IsCompatible;
+            return ProtocolNegotiator.Negotiate(_options.RequiredProtocolVersion, supportedVersion).IsCompatible;
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException)
         {
