@@ -22,3 +22,9 @@ Last verified: 2026-09-15
 ## Verification
 - Initial repository readback: main SHA `131a4f3182fd43cc19520a8803186b136a606eaa` contained only `README.md`.
 - Onboarding verification is not complete until the onboarding PR is merged and fresh `main` readback confirms the required DevOS context.
+
+## Last automated change
+- Commit: dd94eb11984ea5ab08e1ff1b89307dfefcc15d0b
+- Change: Merge pull request #2 from zzpsah/devos/onboard-managed-project
+- Date: 2026-09-15
+- Durable context synchronization: completed

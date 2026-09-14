@@ -1,3 +1,11 @@
+## 2026-09-15 — Merge pull request #2 from zzpsah/devos/onboard-managed-project
+- Commit: dd94eb11984ea5ab08e1ff1b89307dfefcc15d0b
+- Author: PRASHANT KUMAR SAH
+- Classification: meaningful
+- Changed files:
+- `.github/workflows/context-sync.yml`
+- `AGENTS.md`
+
 # Project Change Log
 
 Maintained by Development OS automation. Records observed repository changes; Git remains authoritative for exact history. Never store secrets here.
