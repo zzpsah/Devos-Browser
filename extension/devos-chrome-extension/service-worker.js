@@ -8,6 +8,10 @@ import {
 const BRIDGE_URL = "ws://127.0.0.1:8787/bridge";
 const RECONNECT_DELAY_MS = 3000;
 const MAX_VISIBLE_TEXT = 20000;
+const MAX_ELEMENTS = 250;
+const MAX_FORMS = 50;
+const MAX_TABLES = 50;
+const MAX_FRAMES = 50;
 
 let socket = null;
 let reconnectTimer = null;
@@ -169,13 +173,22 @@ async function attachTab(message) {
     return;
   }
 
+  if (attachedTabs.has(tabId)) {
+    send(BridgeMessageKind.EVENT, {
+      correlationId: message.messageId,
+      tabId: String(tabId),
+      payload: { event: "tabAttached", alreadyAttached: true }
+    });
+    return;
+  }
+
   try {
     await chrome.debugger.attach({ tabId }, "1.3");
     attachedTabs.add(tabId);
     send(BridgeMessageKind.EVENT, {
       correlationId: message.messageId,
       tabId: String(tabId),
-      payload: { event: "tabAttached" }
+      payload: { event: "tabAttached", alreadyAttached: false }
     });
   } catch (error) {
     sendBridgeError(message, "ATTACH_FAILED", String(error));
@@ -216,12 +229,100 @@ async function observeTab(message) {
       { tabId },
       "Runtime.evaluate",
       {
-        expression: `(() => ({
-          url: location.href,
-          title: document.title,
-          visibleText: (document.body?.innerText || "").slice(0, ${MAX_VISIBLE_TEXT}),
-          networkState: document.readyState
-        }))()`,
+        expression: `(() => {
+          const normalizeText = value => String(value || "").replace(/\\s+/g, " ").trim();
+          const isVisible = element => {
+            if (!(element instanceof Element)) return false;
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          };
+          const inferRole = element => {
+            const explicitRole = element.getAttribute("role");
+            if (explicitRole) return explicitRole;
+            const tag = element.tagName.toLowerCase();
+            if (tag === "a" && element.hasAttribute("href")) return "link";
+            if (tag === "button" || tag === "summary") return "button";
+            if (tag === "select") return "combobox";
+            if (tag === "textarea") return "textbox";
+            if (tag === "input") {
+              const type = (element.getAttribute("type") || "text").toLowerCase();
+              if (type === "checkbox") return "checkbox";
+              if (type === "radio") return "radio";
+              if (["button", "submit", "reset", "image"].includes(type)) return "button";
+              return "textbox";
+            }
+            if (element.isContentEditable) return "textbox";
+            return null;
+          };
+          const safeLabel = element => {
+            const tag = element.tagName.toLowerCase();
+            const aria = normalizeText(element.getAttribute("aria-label"));
+            if (aria) return aria.slice(0, 500);
+            const title = normalizeText(element.getAttribute("title"));
+            const placeholder = normalizeText(element.getAttribute("placeholder"));
+            const name = normalizeText(element.getAttribute("name"));
+            const inner = tag === "input" ? "" : normalizeText(element.innerText || element.textContent);
+            return (inner || placeholder || title || name || "").slice(0, 500) || null;
+          };
+
+          const candidates = Array.from(document.querySelectorAll(
+            'a[href],button,input,select,textarea,summary,[role],[contenteditable="true"]'
+          ));
+          const elements = [];
+          const refByElement = new Map();
+
+          for (const element of candidates) {
+            if (elements.length >= ${MAX_ELEMENTS}) break;
+            if (!isVisible(element)) continue;
+
+            const ref = "d" + (elements.length + 1);
+            refByElement.set(element, ref);
+            elements.push({
+              ref,
+              role: inferRole(element),
+              text: safeLabel(element),
+              type: (element.getAttribute("type") || element.tagName.toLowerCase()).toLowerCase(),
+              href: element instanceof HTMLAnchorElement ? element.href : null,
+              visible: true
+            });
+          }
+
+          const forms = Array.from(document.forms).slice(0, ${MAX_FORMS}).map((form, index) => ({
+            ref: "f" + (index + 1),
+            elementRefs: Array.from(form.elements)
+              .map(element => refByElement.get(element))
+              .filter(Boolean)
+          }));
+
+          const tables = Array.from(document.querySelectorAll("table")).slice(0, ${MAX_TABLES}).map((table, index) => {
+            const rows = Array.from(table.rows || []);
+            const columnCount = rows.reduce((max, row) => Math.max(max, row.cells?.length || 0), 0);
+            return {
+              ref: "t" + (index + 1),
+              rowCount: rows.length,
+              columnCount
+            };
+          });
+
+          const frames = Array.from(document.querySelectorAll("iframe,frame")).slice(0, ${MAX_FRAMES}).map((frame, index) => ({
+            ref: "fr" + (index + 1),
+            url: frame.getAttribute("src") || null,
+            title: frame.getAttribute("title") || null
+          }));
+
+          return {
+            url: location.href,
+            title: document.title,
+            visibleText: (document.body?.innerText || "").slice(0, ${MAX_VISIBLE_TEXT}),
+            elements,
+            forms,
+            tables,
+            frames,
+            networkState: document.readyState
+          };
+        })()`,
         returnByValue: true
       }
     );
