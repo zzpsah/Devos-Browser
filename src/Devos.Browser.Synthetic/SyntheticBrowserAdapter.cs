@@ -209,7 +209,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
         if (_path.StartsWith("/uncertain-commit", StringComparison.OrdinalIgnoreCase))
         {
             _uncertainCommitCompleted = true;
-            _lastMessage = "Synthetic provider returned ambiguous commit result. Readback required.";
+            _lastMessage = "Synthetic provider returned ambiguous mutation result. Readback required.";
             return;
         }
 
@@ -321,7 +321,7 @@ public sealed class SyntheticBrowserAdapter : IBrowserAdapter
         else if (pathOnly == "/uncertain-commit")
         {
             title = "Synthetic Uncertain Commit";
-            visibleText = "Uncertain commit simulator. Submit may have completed but there is no immediate success evidence.";
+            visibleText = "Uncertain mutation simulator. Provider cannot confirm persistence yet. Readback required before retry.";
             elements.Add(new BrowserElement("d1", "button", "Submit uncertain transaction", "button", null, true));
             elements.Add(new BrowserElement("d2", "link", "Readback", "link", "/uncertain-commit/readback", true));
         }
