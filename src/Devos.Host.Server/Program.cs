@@ -1,3 +1,4 @@
+using Devos.Browser.ChromeCdp;
 using Devos.Host.Server;
 using Devos.Runtime;
 
@@ -7,6 +8,7 @@ builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("DEVOS_RUNTIME_URL") 
 var app = builder.Build();
 var registry = new InMemoryTaskRegistry();
 var browserBridgeState = new BrowserBridgeRuntimeState();
+var browserCommandConnection = new ChromeCdpBridgeCommandConnection();
 
 app.UseWebSockets(new WebSocketOptions
 {
@@ -71,7 +73,10 @@ app.MapPost("/tasks/{taskId}/cancel", (string taskId) =>
 
 app.MapGet("/browser/status", () => Results.Ok(browserBridgeState.GetSnapshot()));
 
-app.Map("/bridge", context => ChromeCdpBridgeWebSocketEndpoint.HandleAsync(context, browserBridgeState));
+app.Map("/bridge", context => ChromeCdpBridgeWebSocketEndpoint.HandleAsync(
+    context,
+    browserBridgeState,
+    browserCommandConnection));
 
 app.MapGet("/ai/status", () => Results.Ok(new
 {
