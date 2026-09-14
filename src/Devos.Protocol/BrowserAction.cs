@@ -31,4 +31,5 @@ public sealed record BrowserAction(
     BrowserActionKind Kind,
     string? Target = null,
     string? Value = null,
-    string? RequiredCapability = null);
+    string? RequiredCapability = null,
+    string? SnapshotToken = null);
