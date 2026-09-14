@@ -1,13 +1,26 @@
+using Devos.Host.Server;
 using Devos.Runtime;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("DEVOS_RUNTIME_URL") ?? "http://127.0.0.1:8787");
+
 var app = builder.Build();
 var registry = new InMemoryTaskRegistry();
+var browserBridgeState = new BrowserBridgeRuntimeState();
 
-app.MapGet("/status", () => Results.Ok(new RuntimeStatus(
-    State: "READY",
-    AiProvider: "deterministic",
-    BrowserProvider: "none")));
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(30)
+});
+
+app.MapGet("/status", () =>
+{
+    var browser = browserBridgeState.GetSnapshot();
+    return Results.Ok(new RuntimeStatus(
+        State: "READY",
+        AiProvider: "deterministic",
+        BrowserProvider: browser.Connected ? "ChromeCDP" : "none"));
+});
 
 app.MapGet("/capabilities", () => Results.Ok(new
 {
@@ -18,7 +31,9 @@ app.MapGet("/capabilities", () => Results.Ok(new
         "runtime.tasks.read",
         "runtime.tasks.pause",
         "runtime.tasks.resume",
-        "runtime.tasks.cancel"
+        "runtime.tasks.cancel",
+        "browser.bridge.connect",
+        "browser.bridge.status"
     }
 }));
 
@@ -54,12 +69,9 @@ app.MapPost("/tasks/{taskId}/cancel", (string taskId) =>
     return Results.Ok(task);
 });
 
-app.MapGet("/browser/status", () => Results.Ok(new
-{
-    connected = false,
-    provider = "none",
-    message = "Browser bridge not implemented yet."
-}));
+app.MapGet("/browser/status", () => Results.Ok(browserBridgeState.GetSnapshot()));
+
+app.Map("/bridge", context => ChromeCdpBridgeWebSocketEndpoint.HandleAsync(context, browserBridgeState));
 
 app.MapGet("/ai/status", () => Results.Ok(new
 {
