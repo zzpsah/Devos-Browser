@@ -23,6 +23,7 @@ public sealed class ChromeCdpObservationClientTests
         Assert.Equal("https://school.example/dashboard", observation.Url);
         Assert.Equal("Dashboard", observation.Title);
         Assert.Equal("ready", observation.NetworkState);
+        Assert.Equal("snapshot-abc", observation.SnapshotToken);
         Assert.Equal(2, observation.Elements.Count);
         Assert.Equal("d1", observation.Elements[0].Ref);
         Assert.Equal("button", observation.Elements[0].Role);
@@ -105,6 +106,7 @@ public sealed class ChromeCdpObservationClientTests
                         title = "Dashboard",
                         visibleText = "Student portal dashboard",
                         networkState = "ready",
+                        snapshotToken = "snapshot-abc",
                         elements = new object[]
                         {
                             new { @ref = "d1", role = "button", text = "Open Students", type = "button", href = (string?)null, visible = true },
