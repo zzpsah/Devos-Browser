@@ -18,11 +18,11 @@ public sealed class ChromeCdpBridgeSession
     public string? ExtensionId { get; private set; }
     public string? ExtensionVersion { get; private set; }
     public IReadOnlySet<string> GrantedCapabilities { get; private set; } = EmptyCapabilities();
-    public ChromeCdpBridgeMessage? LastEvent { get; private set; }
+    public ChromeCdpBridgeEnvelope? LastEvent { get; private set; }
 
-    public ChromeCdpBridgeMessage? Handle(ChromeCdpBridgeMessage? message)
+    public ChromeCdpBridgeEnvelope? Handle(ChromeCdpBridgeEnvelope? message)
     {
-        var validation = ChromeCdpBridgeMessageValidator.Validate(message);
+        var validation = ChromeCdpBridgeEnvelopeValidator.Validate(message);
         if (!validation.IsValid || message is null)
         {
             return Error(message, "INVALID_MESSAGE", validation.Error ?? "Invalid bridge message.");
@@ -53,7 +53,7 @@ public sealed class ChromeCdpBridgeSession
         };
     }
 
-    private ChromeCdpBridgeMessage HandleHello(ChromeCdpBridgeMessage message)
+    private ChromeCdpBridgeEnvelope HandleHello(ChromeCdpBridgeEnvelope message)
     {
         ChromeCdpBridgeHandshakeRequest? request;
 
@@ -86,7 +86,7 @@ public sealed class ChromeCdpBridgeSession
             reason = result.Reason
         }, JsonOptions);
 
-        return new ChromeCdpBridgeMessage(
+        return new ChromeCdpBridgeEnvelope(
             ProtocolVersion: _options.RequiredProtocolVersion,
             MessageId: NewMessageId(),
             Kind: ChromeCdpBridgeMessageKinds.HelloAck,
@@ -95,7 +95,7 @@ public sealed class ChromeCdpBridgeSession
             Payload: payload);
     }
 
-    private ChromeCdpBridgeMessage? CaptureEvent(ChromeCdpBridgeMessage message)
+    private ChromeCdpBridgeEnvelope? CaptureEvent(ChromeCdpBridgeEnvelope message)
     {
         LastEvent = message;
         return null;
@@ -113,7 +113,7 @@ public sealed class ChromeCdpBridgeSession
         }
     }
 
-    private ChromeCdpBridgeMessage Reply(ChromeCdpBridgeMessage request, string kind, JsonElement? payload = null) =>
+    private ChromeCdpBridgeEnvelope Reply(ChromeCdpBridgeEnvelope request, string kind, JsonElement? payload = null) =>
         new(
             ProtocolVersion: _options.RequiredProtocolVersion,
             MessageId: NewMessageId(),
@@ -123,10 +123,10 @@ public sealed class ChromeCdpBridgeSession
             TabId: request.TabId,
             Payload: payload);
 
-    private ChromeCdpBridgeMessage Error(ChromeCdpBridgeMessage? request, string code, string detail)
+    private ChromeCdpBridgeEnvelope Error(ChromeCdpBridgeEnvelope? request, string code, string detail)
     {
         var payload = JsonSerializer.SerializeToElement(new { code, message = detail }, JsonOptions);
-        return new ChromeCdpBridgeMessage(
+        return new ChromeCdpBridgeEnvelope(
             ProtocolVersion: _options.RequiredProtocolVersion,
             MessageId: NewMessageId(),
             Kind: ChromeCdpBridgeMessageKinds.Error,
