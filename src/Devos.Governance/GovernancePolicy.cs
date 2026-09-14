@@ -45,7 +45,12 @@ public sealed class GovernancePolicy
 
     public GovernanceDecision Classify(BrowserAction action)
     {
-        var semanticText = string.Join(' ', action.Target, action.Value, action.RequiredCapability).ToLowerInvariant();
+        var semanticText = string.Join(
+            ' ',
+            action.Target,
+            action.Value,
+            action.RequiredCapability,
+            action.SemanticHint).ToLowerInvariant();
 
         if (ContainsAny(semanticText, HumanOnlyKeywords))
         {
