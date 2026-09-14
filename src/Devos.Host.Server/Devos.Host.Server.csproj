@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="..\Devos.Runtime\Devos.Runtime.csproj" />
+    <ProjectReference Include="..\Devos.Browser.ChromeCdp\Devos.Browser.ChromeCdp.csproj" />
   </ItemGroup>
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
