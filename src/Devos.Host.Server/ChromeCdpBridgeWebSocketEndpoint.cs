@@ -44,10 +44,10 @@ public static class ChromeCdpBridgeWebSocketEndpoint
                     break;
                 }
 
-                ChromeCdpBridgeMessage? message;
+                ChromeCdpBridgeEnvelope? message;
                 try
                 {
-                    message = JsonSerializer.Deserialize<ChromeCdpBridgeMessage>(raw, JsonOptions);
+                    message = JsonSerializer.Deserialize<ChromeCdpBridgeEnvelope>(raw, JsonOptions);
                 }
                 catch (JsonException ex)
                 {
@@ -137,17 +137,17 @@ public static class ChromeCdpBridgeWebSocketEndpoint
         }
     }
 
-    private static Task SendAsync(WebSocket socket, ChromeCdpBridgeMessage message, CancellationToken cancellationToken)
+    private static Task SendAsync(WebSocket socket, ChromeCdpBridgeEnvelope message, CancellationToken cancellationToken)
     {
         var json = JsonSerializer.Serialize(message, JsonOptions);
         var bytes = Encoding.UTF8.GetBytes(json);
         return socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cancellationToken);
     }
 
-    private static ChromeCdpBridgeMessage CreateError(string code, string detail)
+    private static ChromeCdpBridgeEnvelope CreateError(string code, string detail)
     {
         var payload = JsonSerializer.SerializeToElement(new { code, message = detail }, JsonOptions);
-        return new ChromeCdpBridgeMessage(
+        return new ChromeCdpBridgeEnvelope(
             ProtocolVersion: "1.0",
             MessageId: $"runtime-{Guid.NewGuid():N}",
             Kind: ChromeCdpBridgeMessageKinds.Error,
