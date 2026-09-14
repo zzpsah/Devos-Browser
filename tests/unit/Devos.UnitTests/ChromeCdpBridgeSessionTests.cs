@@ -26,7 +26,7 @@ public sealed class ChromeCdpBridgeSessionTests
     public void NonHandshakeTrafficFailsClosedBeforeConnection()
     {
         var session = new ChromeCdpBridgeSession();
-        var ping = new ChromeCdpBridgeMessage(
+        var ping = new ChromeCdpBridgeEnvelope(
             ProtocolVersion: "1.0",
             MessageId: "ping-1",
             Kind: ChromeCdpBridgeMessageKinds.Ping,
@@ -59,7 +59,7 @@ public sealed class ChromeCdpBridgeSessionTests
     {
         var session = new ChromeCdpBridgeSession();
         _ = session.Handle(CreateHello());
-        var ping = new ChromeCdpBridgeMessage(
+        var ping = new ChromeCdpBridgeEnvelope(
             ProtocolVersion: "1.0",
             MessageId: "ping-2",
             Kind: ChromeCdpBridgeMessageKinds.Ping,
@@ -72,7 +72,7 @@ public sealed class ChromeCdpBridgeSessionTests
         Assert.Equal("ping-2", response.CorrelationId);
     }
 
-    private static ChromeCdpBridgeMessage CreateHello(string runtimeEndpoint = "http://127.0.0.1:8787")
+    private static ChromeCdpBridgeEnvelope CreateHello(string runtimeEndpoint = "http://127.0.0.1:8787")
     {
         var payload = JsonSerializer.SerializeToElement(new
         {
@@ -84,7 +84,7 @@ public sealed class ChromeCdpBridgeSessionTests
             requestedCapabilities = new[] { "browser.navigate", "browser.click" }
         });
 
-        return new ChromeCdpBridgeMessage(
+        return new ChromeCdpBridgeEnvelope(
             ProtocolVersion: "1.0",
             MessageId: "hello-1",
             Kind: ChromeCdpBridgeMessageKinds.Hello,
