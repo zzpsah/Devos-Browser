@@ -101,18 +101,18 @@ public sealed class DevosTaskRunnerTests
             "Form",
             elements: new[]
             {
-                new BrowserElement("d1", "button", "Save registration", "button", null, true)
+                new BrowserElement("d1", "button", "Submit registration", "submit", null, true)
             },
             snapshotToken: "snapshot-approve-1");
         var browser = new FakeBrowserAdapter(observation);
         var planner = new FakePlanner(new PlannerDecision(
             "continue",
-            "Save registration",
-            new BrowserAction(BrowserActionKind.Click, Target: "d1", RequiredCapability: "browser.click")));
+            "Submit registration",
+            new BrowserAction(BrowserActionKind.Submit, Target: "d1", RequiredCapability: "browser.form.submit")));
         var store = new InMemoryCheckpointStore();
         var runner = new DevosTaskRunner(planner, browser, new GovernancePolicy(), new SecurityChallengePolicy(), new ActionVerifier(), store);
 
-        var pending = await runner.RunOneStepAsync("task-5", "save registration");
+        var pending = await runner.RunOneStepAsync("task-5", "submit registration");
         var approved = await runner.ExecuteApprovedPendingActionAsync("task-5");
         var checkpoint = await store.LoadAsync("task-5");
 
