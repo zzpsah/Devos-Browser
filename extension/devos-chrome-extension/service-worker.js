@@ -12,6 +12,7 @@ const MAX_ELEMENTS = 250;
 const MAX_FORMS = 50;
 const MAX_TABLES = 50;
 const MAX_FRAMES = 50;
+const MAX_WAIT_MS = 8000;
 
 let socket = null;
 let reconnectTimer = null;
@@ -151,14 +152,7 @@ async function handleRuntimeMessage(raw) {
       break;
 
     case BridgeMessageKind.EXECUTE_ACTION:
-      send(BridgeMessageKind.ERROR, {
-        correlationId: message.messageId,
-        tabId: message.tabId,
-        payload: {
-          code: "ACTION_EXECUTOR_NOT_IMPLEMENTED",
-          message: "Structured Chrome/CDP action execution remains fail-closed until the governed executor slice is implemented."
-        }
-      });
+      await executeAction(message);
       break;
 
     default:
@@ -338,6 +332,112 @@ async function observeTab(message) {
   } catch (error) {
     sendBridgeError(message, "OBSERVE_FAILED", String(error));
   }
+}
+
+async function executeAction(message) {
+  const tabId = Number(message.tabId);
+  if (!attachedTabs.has(tabId)) {
+    sendBridgeError(message, "TAB_NOT_ATTACHED", "DEVOS may execute actions only on explicitly attached tabs.");
+    return;
+  }
+
+  const action = message.payload?.action;
+  const kind = String(action?.kind || "").toLowerCase();
+
+  if (kind === "navigate") {
+    const targetUrl = String(action?.value || action?.target || "").trim();
+    let parsedUrl;
+
+    try {
+      parsedUrl = new URL(targetUrl);
+    } catch {
+      sendBridgeError(message, "INVALID_URL", "Navigate requires a valid absolute URL.");
+      return;
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      sendBridgeError(message, "UNSAFE_URL_SCHEME", "DEVOS Chrome navigation is limited to HTTP and HTTPS URLs.");
+      return;
+    }
+
+    try {
+      const result = await chrome.debugger.sendCommand({ tabId }, "Page.navigate", { url: parsedUrl.href });
+      if (result?.errorText) {
+        sendBridgeError(message, "NAVIGATE_FAILED", result.errorText);
+        return;
+      }
+
+      send(BridgeMessageKind.EVENT, {
+        correlationId: message.messageId,
+        tabId: String(tabId),
+        payload: {
+          event: "actionResult",
+          action: "navigate",
+          success: true,
+          url: parsedUrl.href
+        }
+      });
+    } catch (error) {
+      sendBridgeError(message, "NAVIGATE_FAILED", String(error));
+    }
+    return;
+  }
+
+  if (kind === "wait") {
+    const selector = String(action?.target || "").trim();
+    if (!selector) {
+      sendBridgeError(message, "INVALID_WAIT_TARGET", "Wait requires a CSS selector target.");
+      return;
+    }
+
+    const deadline = Date.now() + MAX_WAIT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const evaluation = await chrome.debugger.sendCommand(
+          { tabId },
+          "Runtime.evaluate",
+          {
+            expression: `(() => { try { return document.querySelector(${JSON.stringify(selector)}) !== null; } catch { return "__DEVOS_INVALID_SELECTOR__"; } })()`,
+            returnByValue: true
+          }
+        );
+
+        const value = evaluation?.result?.value;
+        if (value === "__DEVOS_INVALID_SELECTOR__") {
+          sendBridgeError(message, "INVALID_SELECTOR", "Wait target is not a valid CSS selector.");
+          return;
+        }
+
+        if (value === true) {
+          send(BridgeMessageKind.EVENT, {
+            correlationId: message.messageId,
+            tabId: String(tabId),
+            payload: {
+              event: "actionResult",
+              action: "wait",
+              success: true,
+              target: selector
+            }
+          });
+          return;
+        }
+      } catch (error) {
+        sendBridgeError(message, "WAIT_FAILED", String(error));
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    sendBridgeError(message, "WAIT_TIMEOUT", `Selector was not found within ${MAX_WAIT_MS} ms.`);
+    return;
+  }
+
+  sendBridgeError(
+    message,
+    "ACTION_NOT_ENABLED",
+    `Chrome action '${kind || "unknown"}' is not enabled. Only governed navigate and wait actions are currently implemented.`
+  );
 }
 
 function sendBridgeError(message, code, detail) {
