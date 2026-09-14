@@ -70,25 +70,57 @@ public sealed class DevosTaskRunner
             return new DevosTaskRunResult(taskId, status, decision.Reason);
         }
 
-        var governanceDecision = _governance.Classify(decision.Action);
+        var plannedAction = BindObservationContext(decision.Action, before);
+        var governanceDecision = _governance.Classify(plannedAction);
         if (governanceDecision == GovernanceDecision.HumanOnly)
         {
-            await SaveCheckpointAsync(taskId, goal, before, decision.Action, "human-intervention-required", "human-only-action", cancellationToken);
-            return new DevosTaskRunResult(taskId, DevosTaskStatus.HumanInterventionRequired, decision.Reason, decision.Action);
+            await SaveCheckpointAsync(taskId, goal, before, plannedAction, "human-intervention-required", "human-only-action", cancellationToken);
+            return new DevosTaskRunResult(taskId, DevosTaskStatus.HumanInterventionRequired, decision.Reason, plannedAction);
         }
 
         if (governanceDecision == GovernanceDecision.ApprovalRequired)
         {
-            await SaveCheckpointAsync(taskId, goal, before, decision.Action, "approval-required", "pending-user-approval", cancellationToken);
-            return new DevosTaskRunResult(taskId, DevosTaskStatus.AwaitingApproval, decision.Reason, decision.Action);
+            await SaveCheckpointAsync(taskId, goal, before, plannedAction, "approval-required", "pending-user-approval", cancellationToken);
+            return new DevosTaskRunResult(taskId, DevosTaskStatus.AwaitingApproval, decision.Reason, plannedAction);
         }
 
-        var adapterResult = await _browser.ExecuteAsync(decision.Action, cancellationToken);
+        var adapterResult = await _browser.ExecuteAsync(plannedAction, cancellationToken);
         var after = await _browser.GetObservationAsync(cancellationToken);
-        var verified = _verifier.Verify(decision.Action, before, after, _browser.ProviderId, adapterResult.Success, adapterResult.Attempts, adapterResult.Error);
+        var verified = _verifier.Verify(plannedAction, before, after, _browser.ProviderId, adapterResult.Success, adapterResult.Attempts, adapterResult.Error);
 
         await SaveCheckpointAsync(taskId, goal, after, null, "continued", verified.Verification.ToString(), cancellationToken, verified);
         return new DevosTaskRunResult(taskId, verified.Success ? DevosTaskStatus.Continued : DevosTaskStatus.Failed, decision.Reason, LastActionResult: verified);
+    }
+
+    private static BrowserAction BindObservationContext(BrowserAction action, BrowserObservation observation)
+    {
+        if (string.IsNullOrWhiteSpace(action.Target))
+        {
+            return action;
+        }
+
+        var element = observation.Elements.FirstOrDefault(candidate =>
+            string.Equals(candidate.Ref, action.Target, StringComparison.Ordinal));
+
+        if (element is null)
+        {
+            return action;
+        }
+
+        var semanticHint = string.Join(
+            ' ',
+            element.Role,
+            element.Text,
+            element.Type,
+            element.Href).Trim();
+
+        return action with
+        {
+            SnapshotToken = action.SnapshotToken ?? observation.SnapshotToken,
+            SemanticHint = string.IsNullOrWhiteSpace(action.SemanticHint)
+                ? semanticHint
+                : action.SemanticHint
+        };
     }
 
     private Task SaveCheckpointAsync(
