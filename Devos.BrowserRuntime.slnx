@@ -8,5 +8,7 @@
   <Project Path="src/Devos.AI.Deterministic/Devos.AI.Deterministic.csproj" />
   <Project Path="src/Devos.Governance/Devos.Governance.csproj" />
   <Project Path="src/Devos.Checkpoints/Devos.Checkpoints.csproj" />
+  <Project Path="src/Devos.Verification/Devos.Verification.csproj" />
+  <Project Path="src/Devos.Core/Devos.Core.csproj" />
   <Project Path="tests/unit/Devos.UnitTests/Devos.UnitTests.csproj" />
 </Solution>
