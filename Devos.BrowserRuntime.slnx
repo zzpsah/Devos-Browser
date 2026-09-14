@@ -3,6 +3,7 @@
   <Project Path="src/Devos.Capabilities.Abstractions/Devos.Capabilities.Abstractions.csproj" />
   <Project Path="src/Devos.Capabilities.Router/Devos.Capabilities.Router.csproj" />
   <Project Path="src/Devos.Browser.Abstractions/Devos.Browser.Abstractions.csproj" />
+  <Project Path="src/Devos.Browser.Synthetic/Devos.Browser.Synthetic.csproj" />
   <Project Path="src/Devos.Extraction.Abstractions/Devos.Extraction.Abstractions.csproj" />
   <Project Path="src/Devos.AI.Abstractions/Devos.AI.Abstractions.csproj" />
   <Project Path="src/Devos.AI.Deterministic/Devos.AI.Deterministic.csproj" />

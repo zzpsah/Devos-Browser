@@ -1,25 +1,23 @@
 # Synthetic Portal
 
-This fixture will become the local test portal for DEVOS browser automation.
+This fixture is the local, synthetic-only portal for DEVOS browser automation.
 
-Planned pages:
+Implemented in this slice as `Devos.Browser.Synthetic`:
 
-- login
-- dashboard
+- login page
+- dashboard page
 - 100 fake student records
-- pagination
-- search
-- edit/save/submit/delete
-- upload/download
-- iframe
-- delayed load
-- network failure
-- session expiry
-- mock CAPTCHA
-- mock OTP
-- mock MFA
-- mock Turnstile
-- mock rate limit
-- uncertain commit simulator
+- records table metadata
+- pagination route
+- mock CAPTCHA marker
+- mock OTP marker
+- mock MFA marker
+- mock Turnstile marker
+- mock reCAPTCHA marker
+- session-expired route
+- rate-limit route
+- iframe metadata route
+- submit-success route
+- uncertain commit simulator with readback route
 
-All data must remain synthetic.
+All data is synthetic. The fixture must never use real school, student, credential, payment, or portal data.

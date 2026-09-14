@@ -32,8 +32,10 @@ Core rule:
 - runtime task registry
 - minimal server API skeleton
 - sensitive-value redactor and observation sanitizer
+- synthetic browser adapter
+- synthetic portal pages for login, dashboard, records, challenges, iframe, submit success, session expiry, rate limit, and uncertain commit readback
 - CI build/test workflow
 
-## Latest local milestone status
+## Latest milestone status
 
-The branch must remain draft until CI confirms the latest commit. No binary artifact should be published at this stage.
+The branch remains draft. Binary artifacts are intentionally not published yet because the project is still core/synthetic-backend stage. Release artifacts should wait until browser-provider and packaging gates exist and pass.
