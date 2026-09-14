@@ -142,7 +142,8 @@ public sealed class ChromeCdpObservationClient : IChromeCdpObservationClient
             Forms: ParseForms(observation),
             Tables: ParseTables(observation),
             Frames: ParseFrames(observation),
-            NetworkState: GetOptionalString(observation, "networkState"));
+            NetworkState: GetOptionalString(observation, "networkState"),
+            SnapshotToken: GetOptionalString(observation, "snapshotToken"));
     }
 
     private static IReadOnlyList<BrowserElement> ParseElements(JsonElement observation)
