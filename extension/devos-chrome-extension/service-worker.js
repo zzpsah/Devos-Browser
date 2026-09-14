@@ -17,6 +17,7 @@ const MAX_WAIT_MS = 8000;
 let socket = null;
 let reconnectTimer = null;
 const attachedTabs = new Set();
+const tabSnapshots = new Map();
 
 async function setConnectionState(state, detail = null) {
   await chrome.storage.local.set({
@@ -81,7 +82,9 @@ function connect() {
           "browser.observe",
           "browser.click",
           "browser.type",
+          "browser.select",
           "browser.read",
+          "browser.wait.selector",
           "browser.tabs",
           "browser.network",
           "browser.accessibility",
@@ -98,6 +101,8 @@ function connect() {
 
   socket.addEventListener("close", async event => {
     socket = null;
+    attachedTabs.clear();
+    tabSnapshots.clear();
     await setConnectionState("disconnected", `socket closed (${event.code})`);
     scheduleReconnect();
   });
@@ -179,6 +184,7 @@ async function attachTab(message) {
   try {
     await chrome.debugger.attach({ tabId }, "1.3");
     attachedTabs.add(tabId);
+    invalidateSnapshot(tabId);
     send(BridgeMessageKind.EVENT, {
       correlationId: message.messageId,
       tabId: String(tabId),
@@ -201,6 +207,7 @@ async function detachTab(message) {
       await chrome.debugger.detach({ tabId });
     }
     attachedTabs.delete(tabId);
+    invalidateSnapshot(tabId);
     send(BridgeMessageKind.EVENT, {
       correlationId: message.messageId,
       tabId: String(tabId),
@@ -321,12 +328,25 @@ async function observeTab(message) {
       }
     );
 
+    const observation = evaluation?.result?.value;
+    if (!observation || typeof observation !== "object") {
+      sendBridgeError(message, "OBSERVE_FAILED", "Chrome did not return a normalized observation object.");
+      return;
+    }
+
+    const snapshotToken = createSnapshotToken();
+    observation.snapshotToken = snapshotToken;
+    tabSnapshots.set(tabId, {
+      token: snapshotToken,
+      elements: Array.isArray(observation.elements) ? observation.elements.map(element => ({ ...element })) : []
+    });
+
     send(BridgeMessageKind.EVENT, {
       correlationId: message.messageId,
       tabId: String(tabId),
       payload: {
         event: "observation",
-        observation: evaluation?.result?.value ?? null
+        observation
       }
     });
   } catch (error) {
@@ -355,27 +375,23 @@ async function executeAction(message) {
       return;
     }
 
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
       sendBridgeError(message, "UNSAFE_URL_SCHEME", "DEVOS Chrome navigation is limited to HTTP and HTTPS URLs.");
       return;
     }
 
     try {
+      invalidateSnapshot(tabId);
       const result = await chrome.debugger.sendCommand({ tabId }, "Page.navigate", { url: parsedUrl.href });
       if (result?.errorText) {
         sendBridgeError(message, "NAVIGATE_FAILED", result.errorText);
         return;
       }
 
-      send(BridgeMessageKind.EVENT, {
-        correlationId: message.messageId,
-        tabId: String(tabId),
-        payload: {
-          event: "actionResult",
-          action: "navigate",
-          success: true,
-          url: parsedUrl.href
-        }
+      sendActionResult(message, tabId, {
+        action: "navigate",
+        success: true,
+        url: parsedUrl.href
       });
     } catch (error) {
       sendBridgeError(message, "NAVIGATE_FAILED", String(error));
@@ -409,15 +425,10 @@ async function executeAction(message) {
         }
 
         if (value === true) {
-          send(BridgeMessageKind.EVENT, {
-            correlationId: message.messageId,
-            tabId: String(tabId),
-            payload: {
-              event: "actionResult",
-              action: "wait",
-              success: true,
-              target: selector
-            }
+          sendActionResult(message, tabId, {
+            action: "wait",
+            success: true,
+            target: selector
           });
           return;
         }
@@ -433,11 +444,218 @@ async function executeAction(message) {
     return;
   }
 
+  if (["click", "type", "select"].includes(kind)) {
+    await executeFreshElementAction(message, tabId, action, kind);
+    return;
+  }
+
   sendBridgeError(
     message,
     "ACTION_NOT_ENABLED",
-    `Chrome action '${kind || "unknown"}' is not enabled. Only governed navigate and wait actions are currently implemented.`
+    `Chrome action '${kind || "unknown"}' is not enabled by the current DEVOS bridge executor.`
   );
+}
+
+async function executeFreshElementAction(message, tabId, action, kind) {
+  const targetRef = String(action?.target || "").trim();
+  const snapshotToken = String(action?.snapshotToken || "").trim();
+
+  if (!/^d[1-9]\d*$/.test(targetRef)) {
+    sendBridgeError(message, "INVALID_ELEMENT_REF", "Element action requires a normalized DEVOS element ref such as d1.");
+    return;
+  }
+
+  if (!snapshotToken) {
+    sendBridgeError(message, "SNAPSHOT_REQUIRED", "Element action requires the snapshot token from the observation that produced the ref.");
+    return;
+  }
+
+  const snapshot = tabSnapshots.get(tabId);
+  if (!snapshot || snapshot.token !== snapshotToken) {
+    sendBridgeError(message, "STALE_SNAPSHOT", "Element ref snapshot is missing or stale. Take a fresh observation before acting.");
+    return;
+  }
+
+  const elementSnapshot = snapshot.elements.find(element => element.ref === targetRef);
+  if (!elementSnapshot) {
+    sendBridgeError(message, "UNKNOWN_ELEMENT_REF", `Element ref '${targetRef}' is not present in the active observation snapshot.`);
+    return;
+  }
+
+  if (kind === "type" && typeof action?.value !== "string") {
+    sendBridgeError(message, "VALUE_REQUIRED", "Type action requires a string value.");
+    return;
+  }
+
+  if (kind === "select" && typeof action?.value !== "string") {
+    sendBridgeError(message, "VALUE_REQUIRED", "Select action requires a string option value or text.");
+    return;
+  }
+
+  const refIndex = Number(targetRef.slice(1)) - 1;
+  const expected = {
+    role: elementSnapshot.role ?? null,
+    text: elementSnapshot.text ?? null,
+    type: elementSnapshot.type ?? null,
+    href: elementSnapshot.href ?? null
+  };
+  const value = typeof action?.value === "string" ? action.value : null;
+
+  try {
+    const evaluation = await chrome.debugger.sendCommand(
+      { tabId },
+      "Runtime.evaluate",
+      {
+        expression: `(() => {
+          const normalizeText = value => String(value || "").replace(/\\s+/g, " ").trim();
+          const isVisible = element => {
+            if (!(element instanceof Element)) return false;
+            const style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          };
+          const inferRole = element => {
+            const explicitRole = element.getAttribute("role");
+            if (explicitRole) return explicitRole;
+            const tag = element.tagName.toLowerCase();
+            if (tag === "a" && element.hasAttribute("href")) return "link";
+            if (tag === "button" || tag === "summary") return "button";
+            if (tag === "select") return "combobox";
+            if (tag === "textarea") return "textbox";
+            if (tag === "input") {
+              const type = (element.getAttribute("type") || "text").toLowerCase();
+              if (type === "checkbox") return "checkbox";
+              if (type === "radio") return "radio";
+              if (["button", "submit", "reset", "image"].includes(type)) return "button";
+              return "textbox";
+            }
+            if (element.isContentEditable) return "textbox";
+            return null;
+          };
+          const safeLabel = element => {
+            const tag = element.tagName.toLowerCase();
+            const aria = normalizeText(element.getAttribute("aria-label"));
+            if (aria) return aria.slice(0, 500);
+            const title = normalizeText(element.getAttribute("title"));
+            const placeholder = normalizeText(element.getAttribute("placeholder"));
+            const name = normalizeText(element.getAttribute("name"));
+            const inner = tag === "input" ? "" : normalizeText(element.innerText || element.textContent);
+            return (inner || placeholder || title || name || "").slice(0, 500) || null;
+          };
+          const currentFingerprint = element => ({
+            role: inferRole(element),
+            text: safeLabel(element),
+            type: (element.getAttribute("type") || element.tagName.toLowerCase()).toLowerCase(),
+            href: element instanceof HTMLAnchorElement ? element.href : null
+          });
+          const equalFingerprint = (left, right) =>
+            left.role === right.role && left.text === right.text && left.type === right.type && left.href === right.href;
+
+          const candidates = Array.from(document.querySelectorAll(
+            'a[href],button,input,select,textarea,summary,[role],[contenteditable="true"]'
+          )).filter(isVisible).slice(0, ${MAX_ELEMENTS});
+          const element = candidates[${refIndex}];
+          if (!element) return { ok: false, code: "STALE_ELEMENT", message: "Element ref no longer resolves." };
+
+          const expected = ${JSON.stringify(expected)};
+          if (!equalFingerprint(currentFingerprint(element), expected)) {
+            return { ok: false, code: "STALE_ELEMENT", message: "Element fingerprint changed after observation." };
+          }
+
+          const kind = ${JSON.stringify(kind)};
+          const value = ${JSON.stringify(value)};
+
+          if (kind === "click") {
+            element.focus?.();
+            element.click();
+            return { ok: true };
+          }
+
+          if (kind === "type") {
+            if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+              element.focus();
+              const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+              const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+              if (descriptor?.set) descriptor.set.call(element, value);
+              else element.value = value;
+              element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+              element.dispatchEvent(new Event("change", { bubbles: true }));
+              return { ok: true };
+            }
+
+            if (element.isContentEditable) {
+              element.focus();
+              element.textContent = value;
+              element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+              return { ok: true };
+            }
+
+            return { ok: false, code: "TARGET_NOT_EDITABLE", message: "Target element is not editable." };
+          }
+
+          if (kind === "select") {
+            if (!(element instanceof HTMLSelectElement)) {
+              return { ok: false, code: "TARGET_NOT_SELECT", message: "Target element is not a select control." };
+            }
+
+            const option = Array.from(element.options).find(candidate =>
+              candidate.value === value || normalizeText(candidate.textContent) === normalizeText(value));
+            if (!option) {
+              return { ok: false, code: "OPTION_NOT_FOUND", message: "Requested option was not found." };
+            }
+
+            element.value = option.value;
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+            element.dispatchEvent(new Event("change", { bubbles: true }));
+            return { ok: true };
+          }
+
+          return { ok: false, code: "ACTION_NOT_ENABLED", message: "Element action is not enabled." };
+        })()`,
+        returnByValue: true
+      }
+    );
+
+    const result = evaluation?.result?.value;
+    if (!result?.ok) {
+      sendBridgeError(message, result?.code || "ELEMENT_ACTION_FAILED", result?.message || "Element action failed.");
+      return;
+    }
+
+    invalidateSnapshot(tabId);
+    sendActionResult(message, tabId, {
+      action: kind,
+      success: true,
+      target: targetRef,
+      snapshotToken
+    });
+  } catch (error) {
+    sendBridgeError(message, "ELEMENT_ACTION_FAILED", String(error));
+  }
+}
+
+function sendActionResult(message, tabId, result) {
+  send(BridgeMessageKind.EVENT, {
+    correlationId: message.messageId,
+    tabId: String(tabId),
+    payload: {
+      event: "actionResult",
+      ...result
+    }
+  });
+}
+
+function createSnapshotToken() {
+  if (typeof crypto?.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function invalidateSnapshot(tabId) {
+  tabSnapshots.delete(Number(tabId));
 }
 
 function sendBridgeError(message, code, detail) {
@@ -451,6 +669,7 @@ function sendBridgeError(message, code, detail) {
 chrome.debugger.onDetach.addListener(async source => {
   if (source.tabId) {
     attachedTabs.delete(source.tabId);
+    invalidateSnapshot(source.tabId);
     send(BridgeMessageKind.EVENT, {
       tabId: String(source.tabId),
       payload: { event: "debuggerDetached" }
@@ -460,6 +679,13 @@ chrome.debugger.onDetach.addListener(async source => {
 
 chrome.tabs.onRemoved.addListener(tabId => {
   attachedTabs.delete(tabId);
+  invalidateSnapshot(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading" || typeof changeInfo.url === "string") {
+    invalidateSnapshot(tabId);
+  }
 });
 
 chrome.runtime.onInstalled.addListener(() => {
