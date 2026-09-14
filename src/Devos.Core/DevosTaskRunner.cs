@@ -25,7 +25,7 @@ public sealed record DevosTaskRunResult(
     BrowserAction? PendingAction = null,
     BrowserActionResult? LastActionResult = null);
 
-public sealed class DevosTaskRunner
+public sealed partial class DevosTaskRunner
 {
     private readonly IAiProvider _planner;
     private readonly IBrowserAdapter _browser;
