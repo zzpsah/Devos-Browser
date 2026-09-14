@@ -65,17 +65,50 @@ public sealed class DevosTaskRunnerTests
         Assert.False(planner.Called);
     }
 
-    private static BrowserObservation Observation(string url, string text) => new(
+    [Fact]
+    public async Task ElementSemanticsCanEscalateOpaqueRefClickToApproval()
+    {
+        var observation = Observation(
+            "https://portal.local/form",
+            "Form",
+            elements: new[]
+            {
+                new BrowserElement("d1", "button", "Save registration", "button", null, true)
+            },
+            snapshotToken: "snapshot-123");
+        var browser = new FakeBrowserAdapter(observation);
+        var planner = new FakePlanner(new PlannerDecision(
+            "continue",
+            "Click the save control",
+            new BrowserAction(BrowserActionKind.Click, Target: "d1", RequiredCapability: "browser.click")));
+        var store = new InMemoryCheckpointStore();
+        var runner = new DevosTaskRunner(planner, browser, new GovernancePolicy(), new SecurityChallengePolicy(), new ActionVerifier(), store);
+
+        var result = await runner.RunOneStepAsync("task-4", "save registration");
+
+        Assert.Equal(DevosTaskStatus.AwaitingApproval, result.Status);
+        Assert.False(browser.Executed);
+        Assert.NotNull(result.PendingAction);
+        Assert.Equal("snapshot-123", result.PendingAction!.SnapshotToken);
+        Assert.Contains("Save registration", result.PendingAction.SemanticHint, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static BrowserObservation Observation(
+        string url,
+        string text,
+        IReadOnlyList<BrowserElement>? elements = null,
+        string? snapshotToken = null) => new(
         ProtocolVersion: "1.0",
         Url: url,
         Title: text,
         TabId: "tab-1",
         VisibleText: text,
-        Elements: Array.Empty<BrowserElement>(),
+        Elements: elements ?? Array.Empty<BrowserElement>(),
         Forms: Array.Empty<BrowserForm>(),
         Tables: Array.Empty<BrowserTable>(),
         Frames: Array.Empty<BrowserFrame>(),
-        NetworkState: "idle");
+        NetworkState: "idle",
+        SnapshotToken: snapshotToken);
 
     private sealed class FakePlanner : IAiProvider
     {
