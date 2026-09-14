@@ -37,6 +37,7 @@ Core rule:
 - synthetic portal contract routes for login, dashboard, records, challenge pages, iframe, session expiry, rate limit, submit success, and uncertain readback
 - provider contract documentation
 - reusable browser-adapter contract test harness
+- Chrome/CDP bridge skeleton with handshake, capability grants, localhost/native-messaging boundary, loopback enforcement, and fail-closed stub adapter
 - CI build/test workflow
 
 ## Latest local milestone status
@@ -45,4 +46,4 @@ The branch must remain draft until CI confirms the latest commit. No binary arti
 
 ## Next slice
 
-Chrome/CDP bridge skeleton: define bridge transport messages, extension handshake models, localhost/native-messaging boundary, and a non-executing stub adapter behind the browser protocol.
+Chrome extension skeleton: Manifest V3 package, service worker handshake flow, connection state, localhost/native-messaging transport stubs, and tests for bridge message schema.

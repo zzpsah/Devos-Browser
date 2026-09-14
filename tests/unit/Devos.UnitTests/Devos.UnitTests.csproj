@@ -4,6 +4,7 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <ProjectReference Include="..\..\..\src\Devos.AI.Deterministic\Devos.AI.Deterministic.csproj" />
+    <ProjectReference Include="..\..\..\src\Devos.Browser.ChromeCdp\Devos.Browser.ChromeCdp.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Browser.Synthetic\Devos.Browser.Synthetic.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Capabilities.Router\Devos.Capabilities.Router.csproj" />
     <ProjectReference Include="..\..\..\src\Devos.Core\Devos.Core.csproj" />
