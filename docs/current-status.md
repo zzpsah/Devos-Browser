@@ -6,7 +6,7 @@ Repository selected: `zzpsah/Devos-Browser`.
 
 Development branch: `feat/devos-browser-runtime-core`.
 
-Current milestone: Phase 0-3 foundation is CI-backed; Phase 5 Chrome/CDP bridge now has a CI-backed loopback connection, correlated runtime command path, explicit tab attach, and normalized read-only observation slice. Phase 4 synthetic-browser fixtures already exist for core contract testing, but the full browser fixture application is not yet complete.
+Current milestone: Phase 0-3 foundation is CI-backed; Phase 5 Chrome/CDP bridge now has a CI-backed loopback connection, correlated runtime command path, explicit tab attach, normalized read-only observation, and the first bounded governed action executor for navigation and selector waits. Phase 4 synthetic-browser fixtures already exist for core contract testing, but the full browser fixture application is not yet complete.
 
 ## Confirmed product direction
 
@@ -35,7 +35,7 @@ Core rule:
 - sensitive-value redactor and observation sanitizer
 - synthetic browser adapter and reusable browser-adapter contract harness
 - synthetic portal contract routes for login, dashboard, records, challenge pages, iframe, session expiry, rate limit, submit success, and uncertain readback
-- Chrome/CDP bridge handshake, capability grants, loopback enforcement, and fail-closed adapter skeleton
+- Chrome/CDP bridge handshake, capability grants, loopback enforcement, and fail-closed legacy adapter skeleton
 - Manifest V3 DEVOS Chrome extension skeleton
 - extension connection-state popup and reconnect flow
 - versioned extension/runtime bridge envelope with schema validation
@@ -50,21 +50,26 @@ Core rule:
 - observation mapping into the provider-independent `BrowserObservation` contract
 - read-only runtime endpoint: `GET /browser/tabs/{tabId}/observation`
 - observation failures mapped to bounded HTTP failure states instead of blind retry
-- structured mutation execution remains fail-closed until the governed executor slice is implemented
-- CI restore/build/test workflow
+- tab-scoped `ChromeCdpTabBrowserAdapter` exposing only implemented capabilities
+- bounded `navigate` execution restricted to absolute HTTP/HTTPS URLs
+- bounded `wait` execution restricted to a CSS selector with an 8-second upper bound
+- correlated action result/error mapping into `BrowserActionResult`
+- click/type/select/submit remain fail-closed in the real Chrome adapter
+- CI now syntax-checks extension JavaScript in addition to .NET restore/build/test
 
 ## Latest verified CI milestone
 
-Commit: `84d1f4aee53963f75efeb1aa423f9ae83529b6db`
+Commit: `860e15c7f0a642fc509729ef31887c6a02cfbf1f`
 
-Push workflow run: `34863674312`
+Push workflow run: `34864270908`
 
 Result:
 
+- extension JavaScript syntax: PASS
 - restore: PASS
 - build: PASS
 - tests: PASS
-- test count: 78 passed / 0 failed
+- test count: 88 passed / 0 failed
 - build warnings: 0
 - build errors: 0
 
@@ -87,14 +92,16 @@ Working in code/CI:
 9. Extension emits a bounded observation containing URL, title, visible text, interactive/semantic elements, forms, tables, frames, and document readiness.
 10. Runtime maps the observation into provider-independent protocol models and exposes it through a read-only endpoint.
 11. Element refs are snapshot-scoped and must be treated as stale after navigation or major DOM changes until a fresh observation is taken.
-12. Arbitrary action execution is still rejected until the governed command executor is wired through the runtime.
+12. The tab-scoped adapter can issue only the currently implemented low-risk executor actions: `navigate` and selector `wait`.
+13. Navigation rejects non-HTTP(S) schemes; wait rejects empty/invalid selectors and is time-bounded.
+14. Higher-risk element mutations remain rejected before they reach the extension executor.
 
 Still missing before Chrome acceptance can be claimed:
 
-- governed navigation/read/wait execution through the bridge
+- observation freshness/staleness token enforcement for element-targeted actions
 - controlled click/type/select execution using fresh element refs
-- positive result/readback mapping into `BrowserActionResult`
-- observation freshness/staleness token enforcement for mutation actions
+- submit/upload approval path wired to real Chrome execution and positive readback
+- richer navigation completion/readback semantics beyond initial `Page.navigate` acceptance
 - multi-tab and frame contract completion
 - downloads/screenshots/network events
 - authenticated localhost bridge or native-messaging hardening
@@ -102,6 +109,6 @@ Still missing before Chrome acceptance can be claimed:
 
 ## Next slice
 
-Implement the first governed Chrome action executor for low-risk actions (`navigate`, `read`, `wait`) with bounded payloads, fresh observation/readback, and tests. Keep click/type/select fail-closed until the observation-ref freshness boundary is enforced. Then add controlled mutations behind existing governance and verification.
+Add a snapshot freshness token to normalized observations and enforce it for element-targeted commands. After that, enable controlled `click`, `type`, and `select` only when a fresh snapshot token and valid element ref match, then rely on the existing governance and verification layers for post-action readback. Submit/upload must remain approval-gated.
 
 Keep the PR draft. Do not publish binaries and do not merge `main` until explicit user approval and separate real-machine validation are complete.
