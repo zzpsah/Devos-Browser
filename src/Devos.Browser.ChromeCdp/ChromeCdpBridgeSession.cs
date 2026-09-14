@@ -55,21 +55,30 @@ public sealed class ChromeCdpBridgeSession
 
     private ChromeCdpBridgeEnvelope HandleHello(ChromeCdpBridgeEnvelope message)
     {
-        ChromeCdpBridgeHandshakeRequest? request;
+        ChromeCdpBridgeHandshakePayload? payload;
 
         try
         {
-            request = message.Payload?.Deserialize<ChromeCdpBridgeHandshakeRequest>(JsonOptions);
+            payload = message.Payload?.Deserialize<ChromeCdpBridgeHandshakePayload>(JsonOptions);
         }
         catch (JsonException ex)
         {
             return Error(message, "INVALID_HELLO", ex.Message);
         }
 
-        if (request is null)
+        if (payload is null)
         {
             return Error(message, "INVALID_HELLO", "Hello payload is required.");
         }
+
+        var request = new ChromeCdpBridgeHandshakeRequest(
+            ExtensionId: payload.ExtensionId,
+            ExtensionVersion: payload.ExtensionVersion,
+            ProtocolVersion: payload.ProtocolVersion,
+            TransportMode: payload.TransportMode,
+            RuntimeEndpoint: payload.RuntimeEndpoint,
+            RequestedCapabilities: (payload.RequestedCapabilities ?? Array.Empty<string>())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase));
 
         var result = ChromeCdpBridgeHandshake.Negotiate(request, _options);
         IsConnected = result.IsConnected;
@@ -77,7 +86,7 @@ public sealed class ChromeCdpBridgeSession
         ExtensionVersion = result.IsConnected ? request.ExtensionVersion : null;
         GrantedCapabilities = result.IsConnected ? result.GrantedCapabilities : EmptyCapabilities();
 
-        var payload = JsonSerializer.SerializeToElement(new
+        var responsePayload = JsonSerializer.SerializeToElement(new
         {
             state = result.Message,
             message = result.IsConnected ? "DEVOS runtime accepted Chrome bridge handshake." : "DEVOS runtime rejected Chrome bridge handshake.",
@@ -92,7 +101,7 @@ public sealed class ChromeCdpBridgeSession
             Kind: ChromeCdpBridgeMessageKinds.HelloAck,
             Timestamp: DateTimeOffset.UtcNow,
             CorrelationId: message.MessageId,
-            Payload: payload);
+            Payload: responsePayload);
     }
 
     private ChromeCdpBridgeEnvelope? CaptureEvent(ChromeCdpBridgeEnvelope message)
@@ -149,4 +158,12 @@ public sealed class ChromeCdpBridgeSession
     private static string NewMessageId() => $"runtime-{Guid.NewGuid():N}";
 
     private static IReadOnlySet<string> EmptyCapabilities() => new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record ChromeCdpBridgeHandshakePayload(
+        string ExtensionId,
+        string ExtensionVersion,
+        string ProtocolVersion,
+        ChromeCdpTransportMode TransportMode,
+        string RuntimeEndpoint,
+        string[]? RequestedCapabilities);
 }
